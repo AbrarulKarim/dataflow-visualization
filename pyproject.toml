@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dataflow-viz"
+version = "0.1.0"
+description = "Dataflow modelling, power/energy simulation and browser visualisation"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.27",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+dataflow = "dataflow.cli:main"
+dataflow-server = "dataflow.web.app:run"
+
+[tool.setuptools.packages.find]
+include = ["dataflow*"]
+
+[tool.setuptools.package-data]
+"dataflow.web" = ["static/*"]

@@ -1,0 +1,156 @@
+{
+  "version": 1,
+  "name": "cyclo-static",
+  "actors": [
+    {
+      "id": "src",
+      "name": "src",
+      "kind": "source",
+      "phases": 1,
+      "position": [
+        80,
+        200
+      ],
+      "power": {
+        "exec_power": 1.0,
+        "idle_power": 0.3,
+        "sleep_power": 0.02,
+        "shutdown_power": 0.5,
+        "wakeup_power": 0.8
+      },
+      "timing": {
+        "exec_time": 1,
+        "sleep_delay": 2,
+        "wakeup_delay": 3
+      },
+      "sleep_policy": {
+        "kind": "never",
+        "timeout": 0
+      },
+      "distribution": {
+        "kind": "gaussian",
+        "mean": 3,
+        "stddev": 1.0,
+        "low": 1.0,
+        "high": 1.0,
+        "expression": ""
+      }
+    },
+    {
+      "id": "resample",
+      "name": "resample",
+      "kind": "phased_rate",
+      "phases": 2,
+      "position": [
+        340,
+        200
+      ],
+      "power": {
+        "exec_power": 1.0,
+        "idle_power": 0.3,
+        "sleep_power": 0.02,
+        "shutdown_power": 0.5,
+        "wakeup_power": 0.8
+      },
+      "timing": {
+        "exec_time": 2,
+        "sleep_delay": 2,
+        "wakeup_delay": 3
+      },
+      "sleep_policy": {
+        "kind": "timeout",
+        "timeout": 5
+      }
+    },
+    {
+      "id": "post",
+      "name": "post",
+      "kind": "static_rate",
+      "phases": 1,
+      "position": [
+        600,
+        200
+      ],
+      "power": {
+        "exec_power": 1.0,
+        "idle_power": 0.3,
+        "sleep_power": 0.02,
+        "shutdown_power": 0.5,
+        "wakeup_power": 0.8
+      },
+      "timing": {
+        "exec_time": 1,
+        "sleep_delay": 2,
+        "wakeup_delay": 3
+      },
+      "sleep_policy": {
+        "kind": "immediate",
+        "timeout": 0
+      }
+    },
+    {
+      "id": "snk",
+      "name": "snk",
+      "kind": "sink",
+      "phases": 1,
+      "position": [
+        840,
+        200
+      ],
+      "power": {
+        "exec_power": 1.0,
+        "idle_power": 0.3,
+        "sleep_power": 0.02,
+        "shutdown_power": 0.5,
+        "wakeup_power": 0.8
+      },
+      "timing": {
+        "exec_time": 1,
+        "sleep_delay": 2,
+        "wakeup_delay": 3
+      },
+      "sleep_policy": {
+        "kind": "never",
+        "timeout": 0
+      }
+    }
+  ],
+  "channels": [
+    {
+      "id": "ch1",
+      "name": "",
+      "src": "src",
+      "dst": "resample",
+      "capacity": 12,
+      "initial_tokens": 0,
+      "production_rate": 1,
+      "consumption_rate": [
+        1,
+        3
+      ]
+    },
+    {
+      "id": "ch2",
+      "name": "",
+      "src": "resample",
+      "dst": "post",
+      "capacity": 12,
+      "initial_tokens": 0,
+      "production_rate": [
+        2,
+        0
+      ],
+      "consumption_rate": 1
+    },
+    {
+      "id": "ch3",
+      "name": "",
+      "src": "post",
+      "dst": "snk",
+      "capacity": 12,
+      "initial_tokens": 0,
+      "production_rate": 1,
+      "consumption_rate": 1
+    }
+  ]
+}

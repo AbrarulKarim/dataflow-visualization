@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Dataflow Visualizer</title>
+  <link rel="stylesheet" href="/static/theme.css">
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark"></span>
+      <input id="graph-name" class="graph-name" value="untitled" spellcheck="false"
+             aria-label="Network name">
+    </div>
+
+    <div class="mode-switch" role="tablist" aria-label="Mode">
+      <button id="mode-edit" class="mode-btn is-active" role="tab">Build</button>
+      <button id="mode-run" class="mode-btn" role="tab">Simulate</button>
+    </div>
+
+    <div class="topbar-actions">
+      <div class="menu">
+        <button class="btn btn-ghost" id="examples-btn">Examples ▾</button>
+        <div class="menu-list" id="examples-menu" hidden></div>
+      </div>
+      <button class="btn btn-ghost" id="new-btn">New</button>
+      <button class="btn btn-ghost" id="open-btn">Open</button>
+      <button class="btn btn-ghost" id="save-btn">Save</button>
+      <button class="btn btn-icon" id="theme-btn" title="Toggle theme">◐</button>
+      <input type="file" id="file-input" accept=".json,.dfg.json" hidden>
+    </div>
+  </header>
+
+  <main class="workspace">
+    <aside class="rail" id="rail">
+      <div class="rail-group">
+        <span class="rail-label">Add actor</span>
+        <div class="rail-tabs" id="actor-tabs" role="tablist"></div>
+        <div class="actor-palette" data-group="static"></div>
+        <div class="actor-palette" data-group="dynamic" hidden></div>
+        <div class="actor-palette" data-group="environment" hidden></div>
+      </div>
+      <div class="rail-group">
+        <span class="rail-label">Add channel</span>
+        <button class="tool" id="tool-connect"><b>Channel</b><small>click two actors</small></button>
+      </div>
+      <div class="rail-group">
+        <span class="rail-label">Tools</span>
+        <button class="tool" id="tool-delete"><b>Delete</b><small>remove selection</small></button>
+        <button class="tool" id="tool-layout"><b>Tidy</b><small>auto-arrange</small></button>
+      </div>
+      <p class="rail-hint" id="rail-hint">Pick an actor type, then click the canvas.</p>
+    </aside>
+
+    <section class="canvas-wrap">
+      <div id="cy"></div>
+      <div class="canvas-controls">
+        <button class="btn btn-icon" id="zoom-fit" title="Fit to view (F)">⤢</button>
+        <button class="btn btn-icon" id="zoom-in" title="Zoom in">+</button>
+        <button class="btn btn-icon" id="zoom-out" title="Zoom out">−</button>
+      </div>
+      <div class="legend" id="legend"></div>
+      <div class="toast" id="toast" hidden></div>
+    </section>
+
+    <aside class="panel" id="panel">
+      <div class="panel-tabs">
+        <button class="panel-tab is-active" data-panel="inspector">Inspector</button>
+        <button class="panel-tab" data-panel="run">Run</button>
+        <button class="panel-tab" data-panel="metrics">Metrics</button>
+        <button class="panel-tab" data-panel="power">Power</button>
+        <button class="btn btn-icon panel-max" id="panel-max"
+                title="Expand this panel to the full page (Esc to exit)">⛶</button>
+      </div>
+
+      <div class="panel-body" id="panel-inspector">
+        <p class="empty">Select an actor or channel to edit its parameters.</p>
+      </div>
+
+      <div class="panel-body" id="panel-run" hidden>
+        <div class="field-grid">
+          <label class="field"><span>Cycles</span>
+            <input type="text" id="cfg-cycles" value="2000"></label>
+          <label class="field"><span>Engine</span>
+            <select id="cfg-engine">
+              <option value="event">event (fast)</option>
+              <option value="tick">tick (reference)</option>
+            </select></label>
+          <label class="field"><span>Seed</span>
+            <input type="number" id="cfg-seed" value="0"></label>
+          <label class="field"><span>Trace from</span>
+            <input type="text" id="cfg-trace-start" value="0"></label>
+          <label class="field"><span>Trace to</span>
+            <input type="text" id="cfg-trace-end" placeholder="end of run"></label>
+        </div>
+        <p class="hint">Metrics always cover the whole run; the trace window only
+          limits what can be replayed on screen.</p>
+        <button class="btn btn-primary btn-block" id="simulate-btn">Simulate</button>
+        <div id="run-status" class="run-status"></div>
+      </div>
+
+      <div class="panel-body" id="panel-metrics" hidden>
+        <p class="empty">Run a simulation to see throughput, power and energy.</p>
+      </div>
+
+      <div class="panel-body" id="panel-power" hidden>
+        <p class="empty">Run a simulation to see each actor's power profile.</p>
+      </div>
+    </aside>
+  </main>
+
+  <footer class="transport" id="transport" hidden>
+    <div class="transport-controls">
+      <button class="btn btn-icon" id="t-first" title="Jump to start">⏮</button>
+      <button class="btn btn-icon" id="t-back" title="Step back">◀</button>
+      <button class="btn btn-play" id="t-play" title="Play/pause">▶</button>
+      <button class="btn btn-icon" id="t-fwd" title="Step forward">▶|</button>
+      <button class="btn btn-icon" id="t-last" title="Jump to end">⏭</button>
+    </div>
+    <input type="range" id="t-slider" class="slider" min="0" max="0" value="0">
+    <div class="transport-readout">
+      <span class="cycle-label">cycle</span>
+      <output id="t-cycle">0</output>
+      <span class="cycle-total" id="t-total">/ 0</span>
+    </div>
+    <label class="field field-inline"><span>Speed</span>
+      <select id="t-speed">
+        <option value="1">1 cyc/s</option>
+        <option value="4">4 cyc/s</option>
+        <option value="12" selected>12 cyc/s</option>
+        <option value="40">40 cyc/s</option>
+        <option value="200">200 cyc/s</option>
+        <option value="1000">1000 cyc/s</option>
+      </select></label>
+  </footer>
+
+  <script src="/static/vendor/cytoscape.min.js"></script>
+  <script type="module" src="/static/main.js"></script>
+</body>
+</html>

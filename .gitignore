@@ -1,0 +1,13 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+
+# Environments and caches
+.venv/
+.pytest_cache/
+
+# Claude Code machine-local permission grants (launch.json is shared)
+.claude/settings.local.json

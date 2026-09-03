@@ -1,0 +1,75 @@
+/* Design tokens. Dark is the default; [data-theme="light"] swaps the ground. */
+
+:root {
+  color-scheme: dark;
+
+  --bg:            #0e1117;
+  --bg-elevated:   #151a23;
+  --bg-sunken:     #0a0d12;
+  --surface:       #1a202b;
+  --surface-hover: #212936;
+  --border:        #262e3b;
+  --border-strong: #37415480;
+
+  --text:          #e6eaf2;
+  --text-muted:    #9aa5b8;
+  --text-faint:    #6b7688;
+
+  --accent:        #7aa2f7;
+  --accent-soft:   #7aa2f733;
+  --accent-text:   #0e1117;
+  --danger:        #f7768e;
+
+  --grid-dot:      #1c2430;
+  --edge:          #4a5568;
+  --edge-label-bg: #1a202b;
+
+  /* Pastel state palette -- identical in both themes so the colour of a node
+     always means the same thing; node labels are always dark on top of it. */
+  --state-idle:      #f7e6a8;
+  --state-executing: #a8c8f0;
+  --state-sleeping:  #a8e6c0;
+  --state-wakeup:    #f5b0a8;
+  --state-shutdown:  #d5c2f0;
+  --state-ink:       #16202e;
+
+  --radius:    10px;
+  --radius-lg: 14px;
+  --space:     8px;
+  --shadow:    0 1px 2px #0006, 0 8px 24px #00000040;
+  --shadow-sm: 0 1px 3px #00000059;
+
+  --font: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          "Helvetica Neue", Arial, sans-serif;
+  --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+
+  --transition: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  --bg:            #f6f7f9;
+  --bg-elevated:   #ffffff;
+  --bg-sunken:     #eceef2;
+  --surface:       #ffffff;
+  --surface-hover: #f0f2f6;
+  --border:        #dfe3ea;
+  --border-strong: #c3cad6;
+
+  --text:          #14181f;
+  --text-muted:    #5b6472;
+  --text-faint:    #8b94a3;
+
+  --accent:        #3b6fd4;
+  --accent-soft:   #3b6fd41f;
+  --accent-text:   #ffffff;
+  --danger:        #d64560;
+
+  --grid-dot:      #dde1e8;
+  --edge:          #9aa4b4;
+  --edge-label-bg: #ffffff;
+
+  --shadow:    0 1px 2px #0000000d, 0 8px 24px #0000000f;
+  --shadow-sm: 0 1px 3px #00000014;
+}

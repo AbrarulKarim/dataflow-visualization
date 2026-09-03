@@ -1,0 +1,196 @@
+{
+  "version": 1,
+  "name": "feedback-loop",
+  "actors": [
+    {
+      "id": "src",
+      "name": "src",
+      "kind": "source",
+      "phases": 1,
+      "position": [
+        80,
+        240
+      ],
+      "power": {
+        "exec_power": 1.0,
+        "idle_power": 0.3,
+        "sleep_power": 0.02,
+        "shutdown_power": 0.5,
+        "wakeup_power": 0.8
+      },
+      "timing": {
+        "exec_time": 1,
+        "sleep_delay": 2,
+        "wakeup_delay": 3
+      },
+      "sleep_policy": {
+        "kind": "never",
+        "timeout": 0
+      },
+      "distribution": {
+        "kind": "constant",
+        "mean": 5,
+        "stddev": 0.0,
+        "low": 1.0,
+        "high": 1.0,
+        "expression": ""
+      }
+    },
+    {
+      "id": "split",
+      "name": "split",
+      "kind": "static_rate",
+      "phases": 1,
+      "position": [
+        300,
+        240
+      ],
+      "power": {
+        "exec_power": 1.0,
+        "idle_power": 0.3,
+        "sleep_power": 0.02,
+        "shutdown_power": 0.5,
+        "wakeup_power": 0.8
+      },
+      "timing": {
+        "exec_time": 2,
+        "sleep_delay": 2,
+        "wakeup_delay": 3
+      },
+      "sleep_policy": {
+        "kind": "timeout",
+        "timeout": 4
+      }
+    },
+    {
+      "id": "work",
+      "name": "work",
+      "kind": "static_rate",
+      "phases": 1,
+      "position": [
+        540,
+        160
+      ],
+      "power": {
+        "exec_power": 1.0,
+        "idle_power": 0.3,
+        "sleep_power": 0.02,
+        "shutdown_power": 0.5,
+        "wakeup_power": 0.8
+      },
+      "timing": {
+        "exec_time": 3,
+        "sleep_delay": 2,
+        "wakeup_delay": 3
+      },
+      "sleep_policy": {
+        "kind": "immediate",
+        "timeout": 0
+      }
+    },
+    {
+      "id": "merge",
+      "name": "merge",
+      "kind": "static_rate",
+      "phases": 1,
+      "position": [
+        780,
+        240
+      ],
+      "power": {
+        "exec_power": 1.0,
+        "idle_power": 0.3,
+        "sleep_power": 0.02,
+        "shutdown_power": 0.5,
+        "wakeup_power": 0.8
+      },
+      "timing": {
+        "exec_time": 2,
+        "sleep_delay": 2,
+        "wakeup_delay": 3
+      },
+      "sleep_policy": {
+        "kind": "timeout",
+        "timeout": 8
+      }
+    },
+    {
+      "id": "snk",
+      "name": "snk",
+      "kind": "sink",
+      "phases": 1,
+      "position": [
+        1000,
+        240
+      ],
+      "power": {
+        "exec_power": 1.0,
+        "idle_power": 0.3,
+        "sleep_power": 0.02,
+        "shutdown_power": 0.5,
+        "wakeup_power": 0.8
+      },
+      "timing": {
+        "exec_time": 1,
+        "sleep_delay": 2,
+        "wakeup_delay": 3
+      },
+      "sleep_policy": {
+        "kind": "never",
+        "timeout": 0
+      }
+    }
+  ],
+  "channels": [
+    {
+      "id": "ch1",
+      "name": "",
+      "src": "src",
+      "dst": "split",
+      "capacity": 6,
+      "initial_tokens": 0,
+      "production_rate": 1,
+      "consumption_rate": 1
+    },
+    {
+      "id": "ch2",
+      "name": "",
+      "src": "split",
+      "dst": "work",
+      "capacity": 4,
+      "initial_tokens": 0,
+      "production_rate": 1,
+      "consumption_rate": 1
+    },
+    {
+      "id": "ch3",
+      "name": "",
+      "src": "work",
+      "dst": "merge",
+      "capacity": 4,
+      "initial_tokens": 0,
+      "production_rate": 1,
+      "consumption_rate": 1
+    },
+    {
+      "id": "ch4",
+      "name": "",
+      "src": "merge",
+      "dst": "snk",
+      "capacity": 6,
+      "initial_tokens": 0,
+      "production_rate": 1,
+      "consumption_rate": 1
+    },
+    {
+      "id": "credit",
+      "name": "",
+      "src": "merge",
+      "dst": "split",
+      "capacity": 3,
+      "initial_tokens": 2,
+      "production_rate": 1,
+      "consumption_rate": 1
+    }
+  ]
+}
