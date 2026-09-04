@@ -42,7 +42,8 @@ export function makeStyle() {
         // which also keeps every node card the same height.
         width: (ele) => {
           const actor = ele.data('actor');
-          const widest = Math.max(actor.name.length, (KIND_LABELS[actor.kind] || '').length);
+          const name = actor.name || actor.id || '';
+          const widest = Math.max(name.length, (KIND_LABELS[actor.kind] || '').length);
           return Math.min(150, Math.max(76, widest * 7 + 26));
         },
         height: 44,
@@ -53,7 +54,7 @@ export function makeStyle() {
         'border-style': (ele) => (SPECIAL.has(ele.data('actor').kind) ? 'dashed' : 'solid'),
         label: (ele) => {
           const actor = ele.data('actor');
-          return `${actor.name}\n${KIND_LABELS[actor.kind] || actor.kind}`;
+          return `${actor.name || actor.id}\n${KIND_LABELS[actor.kind] || actor.kind}`;
         },
         'text-wrap': 'wrap',
         'text-max-width': '140px',
@@ -142,6 +143,50 @@ export function defaultActor(kind, id, defaults) {
   return actor;
 }
 
+/**
+ * Fill in what a `.dfg.json` may legitimately leave out. The Python loader
+ * defaults a missing name to the actor id and every parameter block to the
+ * model defaults, so a hand-written or scripted file must load here too.
+ */
+export function normaliseActor(raw, defaults) {
+  const kind = raw.kind || 'static_rate';
+  const position = Array.isArray(raw.position) && raw.position.length === 2
+    ? raw.position
+    : [0, 0];
+  const actor = {
+    id: raw.id,
+    name: raw.name || raw.id,
+    kind,
+    phases: raw.phases ?? (kind === 'phased_rate' ? 2 : 1),
+    position,
+    power: { ...defaults.power, ...(raw.power || {}) },
+    timing: { ...defaults.timing, ...(raw.timing || {}) },
+    sleep_policy: SPECIAL.has(kind)
+      ? { kind: 'never', timeout: 0 }
+      : { ...defaults.sleep_policy, ...(raw.sleep_policy || {}) },
+  };
+  if (kind === 'source') {
+    actor.distribution = {
+      kind: 'constant', mean: 4, stddev: 1, low: 1, high: 4, expression: '',
+      ...(raw.distribution || {}),
+    };
+  }
+  return actor;
+}
+
+export function normaliseChannel(raw) {
+  return {
+    id: raw.id,
+    name: raw.name || '',
+    src: raw.src,
+    dst: raw.dst,
+    capacity: raw.capacity === undefined ? null : raw.capacity,
+    initial_tokens: raw.initial_tokens ?? 0,
+    production_rate: raw.production_rate ?? 1,
+    consumption_rate: raw.consumption_rate ?? 1,
+  };
+}
+
 export function defaultChannel(id, src, dst) {
   return {
     id,
@@ -156,7 +201,8 @@ export function defaultChannel(id, src, dst) {
 }
 
 export class GraphEditor {
-  constructor(container) {
+  constructor(container, defaults) {
+    this.defaults = defaults;
     this.cy = cytoscape({
       container,
       style: makeStyle(),
@@ -252,8 +298,9 @@ export class GraphEditor {
     this.name = graph.name || 'untitled';
     this.counter = 0;
     const elements = [];
-    (graph.actors || []).forEach((actor, index) => {
-      const [x, y] = actor.position && actor.position.length === 2
+    (graph.actors || []).forEach((raw, index) => {
+      const actor = normaliseActor(raw, this.defaults);
+      const [x, y] = actor.position[0] || actor.position[1]
         ? actor.position
         : [140 + index * 190, 220];
       elements.push({
@@ -262,7 +309,8 @@ export class GraphEditor {
         position: { x, y },
       });
     });
-    (graph.channels || []).forEach((channel) => {
+    (graph.channels || []).forEach((raw) => {
+      const channel = normaliseChannel(raw);
       elements.push({
         group: 'edges',
         data: {

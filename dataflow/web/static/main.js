@@ -519,7 +519,7 @@ async function init() {
   if (savedTheme) document.documentElement.dataset.theme = savedTheme;
 
   defaults = await api.defaults();
-  editor = new GraphEditor($('cy'));
+  editor = new GraphEditor($('cy'), defaults);
   player = new Player(editor, {
     onCycle: (cycle) => {
       $('t-cycle').textContent = String(cycle);

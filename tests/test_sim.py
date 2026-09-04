@@ -130,9 +130,50 @@ def test_fireable_marks_when_work_arrives_not_when_it_starts(mode):
     assert trace["fireable"]["a"][0] == 1
     assert state_at(trace, "a", 1) == "shutdown"
     assert state_at(trace, "a", 5) == "executing"
-    # It consumes at the end of the firing (cycle 7), so it is continuously
-    # fireable from 1 to 7: one rising edge, not seven.
+    # A mid-transition actor still holds its self-loop token, so it stays
+    # fireable across cycles 1..4 -- one mark, not four -- and the next arrives
+    # with the next token.
     assert trace["fireable"]["a"][:2] == [1, 11]
+
+
+@pytest.mark.parametrize("mode", MODES)
+def test_a_back_to_back_actor_is_marked_at_every_firing(mode):
+    """The self-loop token is returned at each completion, so each firing is a
+    fresh rising edge -- not one mark for the whole run of firings."""
+    b = GraphBuilder()
+    b.source("src", interval=1, exec_time=1)
+    b.actor("busy", exec_time=5)
+    b.sink("snk", exec_time=1)
+    b.connect("src", "busy", capacity=100)
+    b.connect("busy", "snk", capacity=100)
+    result = simulate(b.build(), 40, mode=mode)
+
+    busy = next(m for m in result.metrics.actors if m.id == "busy")
+    marks = result.trace["fireable"]["busy"]
+    # It runs without a gap from cycle 1 onwards, five cycles per firing.
+    assert busy.state_cycles["executing"] == 39
+    assert marks == [1, 6, 11, 16, 21, 26, 31, 36]
+    # One mark per firing start: the completed ones plus the one still running.
+    assert len(marks) == busy.firings + 1
+    # Every mark is the cycle a firing began.
+    assert all(state_at(result.trace, "busy", cycle) == "executing" for cycle in marks)
+
+
+@pytest.mark.parametrize("mode", MODES)
+def test_an_executing_actor_is_not_fireable(mode):
+    """Work waiting behind an in-flight firing is not a fireable moment."""
+    b = GraphBuilder()
+    b.source("src", interval=1, exec_time=1)
+    b.actor("slow", exec_time=8)
+    b.sink("snk", exec_time=1)
+    b.connect("src", "slow", capacity=100)
+    b.connect("slow", "snk", capacity=100)
+    trace = simulate(b.build(), 30, mode=mode).trace
+    marks = set(trace["fireable"]["slow"])
+    # Inputs are always backed up, yet only the firing boundaries are marked.
+    assert marks == {1, 9, 17, 25}
+    for cycle in range(2, 9):  # mid-firing cycles are never marked
+        assert cycle not in marks
 
 
 @pytest.mark.parametrize("mode", MODES)

@@ -60,13 +60,17 @@ sleep policy. All of them have defaults and are editable per actor.
 
 * Each actor has an implicit **self-loop holding one token**. It is taken when a
   firing starts and returned when it ends, so an actor never has two firings in
-  flight.
+  flight. It is part of the firing rule: an executing actor is not fireable, and
+  becomes fireable again the moment its firing completes and returns the token.
 * Input tokens are *checked* at firing start and **consumed at firing end**;
   outputs are produced at firing end. No reservation bookkeeping is needed: a
   channel has exactly one consumer, and that consumer's self-loop stops it from
   starting a second firing, so nothing else can claim those tokens.
-* An actor is fireable only when every input holds enough tokens **and** every
-  output has room for what the firing will produce (blocked-on-write).
+* An actor is fireable only when its self-loop token is free **and** every input
+  holds enough tokens **and** every output has room for what the firing will
+  produce (blocked-on-write). An actor mid-shutdown or mid-wakeup still holds its
+  self-loop token, so it counts as fireable: work is available, it simply cannot
+  act on it yet.
 * Every actor that is fireable at a cycle boundary starts in that cycle; ties
   are broken by a stable actor ordering, so runs are reproducible.
 
@@ -108,12 +112,15 @@ stretches would otherwise be a hairline in a true-area plot.
 **Arrows above each plot mark the cycles the actor became fireable** — the moment
 work became available, which is not the moment it starts running. The gap between
 an arrow and the execution block after it is what waking up cost: a wakeup ramp,
-or a whole sleep-and-wake round trip if the work arrived mid-shutdown. Fireability
-is computed by the simulator (inputs hold enough tokens *and* every output has
-room), not re-derived in the browser, and only rising edges are marked — an actor
-with a continuous backlog gets one arrow, not one per cycle. **Hide fireable
-marks** turns them off; when a view packs them closer than a few pixels the chart
-draws what it can and says how many it left out.
+or a whole sleep-and-wake round trip if the work arrived mid-shutdown.
+
+Fireability is computed by the simulator, not re-derived in the browser, and only
+rising edges are marked. Because the self-loop token is part of the firing rule, an
+actor running back-to-back becomes fireable again at each completion, so it gets
+**one arrow per firing** — the boundary where the self-loop token comes back —
+rather than one for the whole run of firings. **Hide fireable marks** turns them
+off; when a view packs them closer than a few pixels the chart draws what it can
+and says how many it left out.
 
 Each chart zooms and pans on its own, like a waveform viewer: **scroll** to zoom
 around the cursor, **drag** to pan, **double-click** (or ⤢) to fit the whole

@@ -103,12 +103,23 @@ class SimulationCore:
             self.on_channel_change(t, channel.id, channel.tokens)
 
     def fireable(self, rt: ActorRuntime, t: int) -> bool:
-        """Inputs hold enough tokens *and* every output has room (blocked-on-write).
+        """Whether a firing could start right now.
 
-        The implicit self-loop token is accounted for by the caller: only actors
-        that are IDLE or SLEEPING are ever asked, and an executing actor holds
-        its own self token.
+        Three conditions, all of them part of the firing rule:
+
+        * the implicit **self-loop token** is available -- an executing actor is
+          holding its own, which is what stops firings from overlapping, so it
+          becomes fireable again only when that firing completes and gives the
+          token back;
+        * every input holds enough tokens;
+        * every output has room for what the firing will produce
+          (blocked-on-write).
+
+        An actor mid-shutdown or mid-wakeup still has its self-loop token, so it
+        counts as fireable: work is available, it simply cannot act on it yet.
         """
+        if rt.state is ActorState.EXECUTING:
+            return False
         kind = rt.actor.kind
         if kind is ActorKind.SOURCE and t < rt.next_fire:
             return False
@@ -220,6 +231,10 @@ class SimulationCore:
             assert rt.actor.distribution is not None
             rt.next_fire = t + rt.actor.distribution.sample(self.rng)
         rt.idle_since = None
+        # Taking the self-loop token makes the actor non-fireable. Decisions run
+        # after the fireability report in a boundary, so record that fall here or
+        # the next rising edge -- this firing completing -- would be missed.
+        rt.was_fireable = False
         self._set_state(rt, ActorState.EXECUTING, t)
         rt.until = t + rt.actor.timing.exec_time
 
