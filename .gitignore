@@ -4,7 +4,7 @@ __pycache__/
 *.egg-info/
 build/
 dist/
-claude/*
+.claude/
 # Environments and caches
 .venv/
 .pytest_cache/
