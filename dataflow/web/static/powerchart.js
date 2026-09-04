@@ -35,7 +35,7 @@ const STATE_INDEX = Object.fromEntries(STATES.map((state, i) => [state, i]));
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
 /** Plot margins, in CSS pixels. */
-const PAD = { left: 46, right: 14, top: 12, bottom: 42 };
+const PAD = { left: 46, right: 14, top: 18, bottom: 42 };
 const RIBBON_GAP = 3;
 const RIBBON_HEIGHT = 5;
 
@@ -54,6 +54,8 @@ const MIN_WIDTH = 260;
 const MAX_COLUMNS = 2400;
 /** Never zoom in past this many cycles; below it the step function is moot. */
 const MIN_SPAN = 4;
+/** Fireable arrows closer together than this (in px) are not worth drawing. */
+const MARKER_PITCH = 5;
 
 const css = (name) =>
   getComputedStyle(document.documentElement).getPropertyValue(name).trim();
@@ -163,6 +165,18 @@ export function segmentAt(timeline, cycle) {
 const segmentEnd = (timeline, i) =>
   (i + 1 < timeline.count ? timeline.starts[i + 1] : timeline.end);
 
+/** Index of the first entry of a sorted array that is >= `value`. */
+export function firstAtLeast(sorted, value) {
+  let low = 0;
+  let high = sorted.length;
+  while (low < high) {
+    const mid = (low + high) >> 1;
+    if (sorted[mid] < value) low = mid + 1;
+    else high = mid;
+  }
+  return low;
+}
+
 /** Peak, mean and energy over an arbitrary cycle range. */
 export function statsOver(timeline, powerAt, from, to) {
   let energy = 0;
@@ -185,8 +199,9 @@ export function statsOver(timeline, powerAt, from, to) {
 // --------------------------------------------------------------------------- //
 
 class PowerChart {
-  constructor(actor, series, bounds, colors, viewState) {
+  constructor(actor, series, bounds, colors, viewState, fireable) {
     this.actor = actor;
+    this.fireable = fireable || [];
     this.colors = colors;
     this.viewState = viewState;
     this.bounds = bounds; // { from, to } -- the whole trace window
@@ -226,6 +241,13 @@ class PowerChart {
     this.root = el('div', { class: 'power-card' });
 
     const head = el('div', { class: 'power-head' });
+    this.grip = el('button', {
+      class: 'btn btn-icon chart-grip',
+      text: '⠿',
+      draggable: 'true',
+      title: 'Drag to reorder — or focus this handle and press ↑ / ↓',
+      'aria-label': `Reorder ${this.actor.name}`,
+    });
     this.chevron = el('button', { class: 'btn btn-icon chart-collapse' });
     this.chevron.addEventListener('click', () => this.setCollapsed(!this.collapsed));
     this.title = el('b', { class: 'power-title', text: this.actor.name });
@@ -247,6 +269,7 @@ class PowerChart {
       tool('⇉', 'Apply this range to every actor', () => this.onBroadcast?.(this.view)),
     );
     head.append(
+      this.grip,
       this.chevron,
       this.title,
       el('span', { class: 'pill', text: KIND_LABELS[this.actor.kind] || this.actor.kind }),
@@ -285,6 +308,10 @@ class PowerChart {
     });
     this.zeroLabel.textContent = '0';
     this.svg.append(this.peakLabel, this.zeroLabel);
+
+    // One path holds every arrow, so the marker layer is a single DOM node.
+    this.markers = svgEl('path', { class: 'power-markers' });
+    this.svg.append(this.markers);
 
     this.playhead = svgEl('line', {
       stroke: colors.accent, 'stroke-width': 1.4, class: 'power-playhead', opacity: 0,
@@ -370,6 +397,20 @@ class PowerChart {
       this.dirty = false;
       this.render();
     }
+  }
+
+  /**
+   * Draw into the (possibly hidden) SVG even while collapsed. Collapsed charts
+   * skip rendering to stay cheap, so anything that reads their SVG -- the SVG
+   * export -- has to ask for the pixels first.
+   */
+  ensureDrawn() {
+    if (!this.collapsed && !this.dirty) return;
+    const collapsed = this.collapsed;
+    this.collapsed = false;
+    this.render();
+    this.collapsed = collapsed;
+    this.dirty = false;
   }
 
   applyCollapsed() {
@@ -525,14 +566,21 @@ class PowerChart {
     setAttrs(this.meanLine, { x1: x0, x2: x1, y1: meanY, y2: meanY });
     this.meanLine.setAttribute('opacity', stats.mean > 0 ? '0.85' : '0');
 
+    this.renderMarkers(from, to, x);
     this.renderTicks(from, to, x, plotWidth);
 
-    this.note.hidden = !dense;
+    const notes = [];
     if (dense) {
-      this.note.textContent = 'More detail here than the chart has columns: each bar '
-        + 'is its column\'s mean power, coloured by the state that dominated it. '
-        + 'Zoom in for the exact steps.';
+      notes.push('More detail here than the chart has columns: each bar is its '
+        + 'column\'s mean power, coloured by the state that dominated it. Zoom in '
+        + 'for the exact steps.');
     }
+    if (this.hiddenMarkers > 0) {
+      notes.push(`${this.hiddenMarkers} more fireable marks are too close together `
+        + 'to draw; zoom in to see them all.');
+    }
+    this.note.textContent = notes.join(' ');
+    this.note.hidden = notes.length === 0;
     this.lastX = x;
     this.placePlayhead();
   }
@@ -597,6 +645,38 @@ class PowerChart {
     }
   }
 
+  /**
+   * Arrows above the plot marking the cycles the actor became fireable -- the
+   * moment work became available, which is not the moment it starts running:
+   * the gap to the next execution block is what waking up cost.
+   */
+  renderMarkers(from, to, x) {
+    const { y0 } = this.plot;
+    this.hiddenMarkers = 0;
+    if (!this.viewState.showFireable || this.fireable.length === 0) {
+      this.markers.setAttribute('d', '');
+      return;
+    }
+    const tip = y0 - 2;
+    const tail = y0 - 9;
+    let path = '';
+    let lastPx = -Infinity;
+    for (let i = firstAtLeast(this.fireable, from); i < this.fireable.length; i += 1) {
+      const cycle = this.fireable[i];
+      if (cycle >= to) break;
+      const px = x(cycle);
+      if (px - lastPx < MARKER_PITCH) {
+        this.hiddenMarkers += 1;
+        continue;
+      }
+      lastPx = px;
+      path += `M${(px - 3.4).toFixed(2)} ${tail}H${(px + 3.4).toFixed(2)}`
+        + `L${px.toFixed(2)} ${tip}Z`;
+    }
+    this.markers.setAttribute('d', path);
+    this.markers.setAttribute('fill', this.colors.marker);
+  }
+
   renderTicks(from, to, x, plotWidth) {
     const { colors } = this;
     const { y0, y1 } = this.plot;
@@ -658,6 +738,7 @@ export function renderPowerCharts(container, { actors, trace, graphName, viewSta
     axis: css('--border-strong') || css('--border'),
     faint: css('--text-faint'),
     accent: css('--accent'),
+    marker: css('--text-muted'),
     bg: css('--bg-elevated'),
     text: css('--text'),
     font: css('--font') || 'sans-serif',
@@ -679,9 +760,11 @@ export function renderPowerCharts(container, { actors, trace, graphName, viewSta
   };
 
   const state = viewState || { collapsed: new Set(), heights: new Map() };
-  const charts = actors.map(
-    (actor) => new PowerChart(actor, trace.actors[actor.id], bounds, colors, state),
-  );
+  if (state.showFireable === undefined) state.showFireable = true;
+  const marks = trace.fireable || {};
+  const charts = orderActors(actors, state.order).map((actor) => new PowerChart(
+    actor, trace.actors[actor.id], bounds, colors, state, marks[actor.id],
+  ));
   charts.forEach((chart) => {
     chart.onBroadcast = (view) => {
       charts.forEach((other) => {
@@ -693,9 +776,11 @@ export function renderPowerCharts(container, { actors, trace, graphName, viewSta
   const parts = [el('p', {
     class: 'hint',
     text: `Cycles ${cycleLabel(bounds.from)}–${cycleLabel(bounds.to - 1)}. The area is `
-      + 'shaded by the state the actor was in. Scroll on a chart to zoom around the '
-      + 'cursor, drag to pan, double-click to fit; the figures follow the visible '
-      + 'range. S/M/L/XL sets a chart\'s height.',
+      + 'shaded by the state the actor was in, and the arrows above each plot mark '
+      + 'the cycles the actor became fireable -- the gap to the next execution '
+      + 'block is what waking up cost. Scroll on a chart to zoom around the cursor, '
+      + 'drag to pan, double-click to fit; the figures follow the visible range. '
+      + 'S/M/L/XL sets a chart\'s height.',
   })];
   if (trace.truncated) {
     parts.push(el('p', {
@@ -704,12 +789,15 @@ export function renderPowerCharts(container, { actors, trace, graphName, viewSta
         + 'cover the whole run. Narrow the trace window to see further in.',
     }));
   }
-  charts.forEach((chart) => parts.push(chart.root));
+  const list = el('div', { class: 'power-list' });
+  charts.forEach((chart) => list.append(chart.root));
+  parts.push(list);
+  const order = wireReordering(list, charts, state);
 
   const actions = el('div', { class: 'metric-actions' });
   const exportBtn = el('button', { class: 'btn', text: 'Export SVG' });
   exportBtn.addEventListener('click', () => {
-    const blob = new Blob([exportSvg(charts, colors, graphName)], { type: 'image/svg+xml' });
+    const blob = new Blob([exportSvg(order(), colors, graphName)], { type: 'image/svg+xml' });
     const url = URL.createObjectURL(blob);
     const anchor = Object.assign(document.createElement('a'), {
       href: url, download: `${graphName}-power.svg`,
@@ -721,6 +809,17 @@ export function renderPowerCharts(container, { actors, trace, graphName, viewSta
   });
   const resetBtn = el('button', { class: 'btn', text: 'Fit all' });
   resetBtn.addEventListener('click', () => charts.forEach((chart) => chart.reset()));
+  const markBtn = el('button', { class: 'btn' });
+  const syncMarks = () => {
+    markBtn.textContent = state.showFireable ? 'Hide fireable marks' : 'Show fireable marks';
+  };
+  markBtn.addEventListener('click', () => {
+    state.showFireable = !state.showFireable;
+    syncMarks();
+    charts.forEach((chart) => chart.scheduleRender());
+  });
+  syncMarks();
+
   const foldBtn = el('button', { class: 'btn' });
   const syncFold = () => {
     const anyOpen = charts.some((chart) => !chart.collapsed);
@@ -733,7 +832,7 @@ export function renderPowerCharts(container, { actors, trace, graphName, viewSta
   });
   syncFold();
   charts.forEach((chart) => { chart.onFold = syncFold; });
-  actions.append(foldBtn, resetBtn, exportBtn);
+  actions.append(markBtn, foldBtn, resetBtn, exportBtn);
   parts.push(actions);
 
   container.replaceChildren(...parts);
@@ -764,6 +863,85 @@ export function renderPowerCharts(container, { actors, trace, graphName, viewSta
   };
 }
 
+/**
+ * Put actors in the order the user last dragged them into. Anything not in the
+ * saved order -- a newly added actor -- keeps its natural place at the end.
+ */
+function orderActors(actors, saved) {
+  if (!saved || saved.length === 0) return actors;
+  const rank = new Map(saved.map((id, index) => [id, index]));
+  return actors
+    .map((actor, index) => ({
+      actor,
+      key: rank.has(actor.id) ? rank.get(actor.id) : saved.length + index,
+    }))
+    .sort((a, b) => a.key - b.key)
+    .map((entry) => entry.actor);
+}
+
+/**
+ * Drag-to-reorder by the grip handle, with arrow keys as the keyboard path.
+ * The chart itself keeps its own drag gesture for panning, which is why the
+ * handle is a separate control.
+ */
+function wireReordering(list, charts, state) {
+  const byRoot = new Map(charts.map((chart) => [chart.root, chart]));
+  const current = () => [...list.children].map((root) => byRoot.get(root));
+  const remember = () => { state.order = current().map((chart) => chart.actor.id); };
+
+  /** The card the pointer is currently above the top half of. */
+  const dropTarget = (y, dragging) => {
+    for (const root of list.children) {
+      if (root === dragging) continue;
+      const box = root.getBoundingClientRect();
+      if (y < box.top + box.height / 2) return root;
+    }
+    return null;
+  };
+
+  let dragging = null;
+  charts.forEach((chart) => {
+    chart.grip.addEventListener('dragstart', (event) => {
+      dragging = chart.root;
+      chart.root.classList.add('is-dragging');
+      event.dataTransfer.effectAllowed = 'move';
+      // Firefox refuses to start a drag without payload.
+      event.dataTransfer.setData('text/plain', chart.actor.id);
+    });
+    chart.grip.addEventListener('dragend', () => {
+      if (dragging) dragging.classList.remove('is-dragging');
+      dragging = null;
+      remember();
+    });
+    chart.grip.addEventListener('keydown', (event) => {
+      const step = event.key === 'ArrowUp' ? -1 : (event.key === 'ArrowDown' ? 1 : 0);
+      if (!step) return;
+      event.preventDefault();
+      const roots = [...list.children];
+      const index = roots.indexOf(chart.root);
+      const target = index + step;
+      if (target < 0 || target >= roots.length) return;
+      if (step < 0) list.insertBefore(chart.root, roots[target]);
+      else list.insertBefore(roots[target], chart.root);
+      remember();
+      chart.grip.focus();
+    });
+  });
+
+  list.addEventListener('dragover', (event) => {
+    if (!dragging) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'move';
+    const before = dropTarget(event.clientY, dragging);
+    if (before === dragging) return;
+    if (before) list.insertBefore(dragging, before);
+    else list.append(dragging);
+  });
+  list.addEventListener('drop', (event) => event.preventDefault());
+
+  return current;
+}
+
 /** Stack the live charts into one standalone, self-contained SVG file. */
 function exportSvg(charts, colors, graphName) {
   const width = Math.max(FALLBACK_WIDTH, ...charts.map((chart) => chart.width));
@@ -786,6 +964,7 @@ function exportSvg(charts, colors, graphName) {
 
   let top = 44;
   charts.forEach((chart, index) => {
+    chart.ensureDrawn();
     const heading = svgEl('text', {
       x: 16, y: top + 12, 'font-size': 11, 'font-weight': 600, fill: colors.text,
     });

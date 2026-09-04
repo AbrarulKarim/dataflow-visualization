@@ -39,7 +39,7 @@ class ActorRuntime:
     __slots__ = (
         "actor", "inputs", "outputs", "state", "until", "idle_since", "phase",
         "firings", "pending_consume", "pending_produce", "next_fire",
-        "state_cycles", "tokens_in", "tokens_out",
+        "state_cycles", "tokens_in", "tokens_out", "was_fireable",
     )
 
     def __init__(self, actor: Actor, inputs: list[Channel], outputs: list[Channel]):
@@ -57,6 +57,7 @@ class ActorRuntime:
         self.state_cycles: dict[ActorState, int] = {s: 0 for s in ActorState}
         self.tokens_in = 0
         self.tokens_out = 0
+        self.was_fireable = False
 
     @property
     def id(self) -> str:
@@ -86,6 +87,7 @@ class SimulationCore:
         #: Set by the driver so the core can report state/token changes.
         self.on_actor_state = None  # type: ignore[assignment]
         self.on_channel_change = None  # type: ignore[assignment]
+        self.on_fireable = None  # type: ignore[assignment]
 
     # -- helpers -------------------------------------------------------------
 
@@ -126,8 +128,28 @@ class SimulationCore:
         for rt in self.order:
             if rt.state in TIMED_STATES and rt.until == t:
                 self._complete(rt, t)
+        if self.on_fireable is not None:
+            self._report_fireable(t)
         for rt in self.order:
             self._decide(rt, t)
+
+    def _report_fireable(self, t: int) -> None:
+        """Report actors that have just become fireable.
+
+        Evaluated after the completions have moved tokens but *before* any
+        decision is taken, which is what "work is available entering this cycle"
+        means: a source that fires here has not yet pushed its next arrival out,
+        and an actor about to start has not yet taken its self-loop token.
+
+        Fireability only changes when a firing completes or a source's arrival
+        comes due, and both are cycle boundaries, so sampling here catches every
+        transition -- in the event engine as much as in the tick loop.
+        """
+        for rt in self.order:
+            now = self.fireable(rt, t)
+            if now and not rt.was_fireable:
+                self.on_fireable(t, rt.id)
+            rt.was_fireable = now
 
     def _complete(self, rt: ActorRuntime, t: int) -> None:
         if rt.state is ActorState.EXECUTING:

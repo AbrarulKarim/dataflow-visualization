@@ -121,6 +121,65 @@ def test_shutdown_is_not_interruptible(mode):
 
 
 @pytest.mark.parametrize("mode", MODES)
+def test_fireable_marks_when_work_arrives_not_when_it_starts(mode):
+    """The gap between the two is exactly what the sleep policy costs."""
+    trace = simulate(sleeper_graph(), 30, mode=mode).trace
+
+    # The source emits at 0 and its token lands at cycle 1, which is when `a`
+    # has work -- but it is mid-shutdown, so it only runs at cycle 5.
+    assert trace["fireable"]["a"][0] == 1
+    assert state_at(trace, "a", 1) == "shutdown"
+    assert state_at(trace, "a", 5) == "executing"
+    # It consumes at the end of the firing (cycle 7), so it is continuously
+    # fireable from 1 to 7: one rising edge, not seven.
+    assert trace["fireable"]["a"][:2] == [1, 11]
+
+
+@pytest.mark.parametrize("mode", MODES)
+def test_a_source_becomes_fireable_on_its_interval(mode):
+    trace = simulate(sleeper_graph(interval=10), 55, mode=mode).trace
+    assert trace["fireable"]["src"] == [0, 10, 20, 30, 40, 50]
+
+
+@pytest.mark.parametrize("mode", MODES)
+def test_fireable_edges_are_rising_only(mode):
+    """Never two marks without the actor going non-fireable in between."""
+    graph = sleeper_graph(sleep="never", interval=3)
+    result = simulate(graph, 400, mode=mode)
+    for actor_id, cycles in result.trace["fireable"].items():
+        assert cycles == sorted(set(cycles)), f"{actor_id} has repeats"
+        # A mark can never land while the actor is already executing on the work
+        # it marks: the firing that consumed the previous tokens must have ended.
+        assert all(0 <= c < 400 for c in cycles)
+
+
+@pytest.mark.parametrize("mode", MODES)
+def test_backpressure_delays_the_fireable_mark(mode):
+    """An actor with tokens but no room downstream is not yet fireable."""
+    b = GraphBuilder()
+    b.source("src", interval=1, exec_time=1)
+    b.actor("a", exec_time=1)
+    b.sink("snk", exec_time=20)  # drains very slowly
+    b.connect("src", "a", capacity=50)
+    b.connect("a", "snk", capacity=1)
+    trace = simulate(b.build(), 200, mode=mode).trace
+    # `a` always has input waiting, so every mark is the sink making room. The
+    # loop is 21 cycles, not 20: the sink frees the slot when its firing ends,
+    # then `a`'s own one-cycle firing has to land the next token before the sink
+    # can start again.
+    marks = trace["fireable"]["a"]
+    gaps = {b_ - a_ for a_, b_ in zip(marks, marks[1:])}
+    assert gaps == {21}, marks
+
+
+def test_fireable_marks_respect_the_trace_window():
+    windowed = simulate(sleeper_graph(interval=10), 300,
+                        trace=TraceConfig(start=100, end=150)).trace
+    assert all(100 <= c <= 150 for c in windowed["fireable"]["src"])
+    assert windowed["fireable"]["src"] == [100, 110, 120, 130, 140, 150]
+
+
+@pytest.mark.parametrize("mode", MODES)
 def test_never_policy_stays_idle(mode):
     trace = simulate(sleeper_graph(sleep="never"), 30, mode=mode).trace
     states = set(states_over(trace, "a", range(0, 30)))

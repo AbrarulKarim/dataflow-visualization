@@ -31,6 +31,8 @@ class TraceRecorder:
     config: TraceConfig = field(default_factory=TraceConfig)
     actor_states: dict[str, list[list[Any]]] = field(default_factory=dict)
     channel_tokens: dict[str, list[list[Any]]] = field(default_factory=dict)
+    #: Cycles at which each actor went from not-fireable to fireable.
+    fireable: dict[str, list[int]] = field(default_factory=dict)
     events: int = 0
     truncated: bool = False
     primed: bool = False
@@ -49,6 +51,7 @@ class TraceRecorder:
         self.last_cycle = self.config.start
         for aid, state in states.items():
             self.actor_states[aid] = [[self.config.start, state]]
+            self.fireable.setdefault(aid, [])
         for cid, count in tokens.items():
             self.channel_tokens[cid] = [[self.config.start, count]]
 
@@ -87,6 +90,11 @@ class TraceRecorder:
         else:
             series.append([cycle, value])
 
+    def record_fireable(self, cycle: int, actor_id: str) -> None:
+        if not self._accept(cycle):
+            return
+        self.fireable.setdefault(actor_id, []).append(cycle)
+
     def record_tokens(self, cycle: int, channel_id: str, tokens: int) -> None:
         if not self._accept(cycle):
             return
@@ -100,6 +108,7 @@ class TraceRecorder:
         return {
             "actors": self.actor_states,
             "channels": self.channel_tokens,
+            "fireable": self.fireable,
             "first_cycle": self.first_cycle,
             "last_cycle": self.last_cycle,
             "events": self.events,

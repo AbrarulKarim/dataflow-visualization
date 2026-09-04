@@ -62,6 +62,7 @@ class Simulator:
         if self.trace_config.enabled:
             core.on_actor_state = recorder.record_state
             core.on_channel_change = recorder.record_tokens
+            core.on_fireable = recorder.record_fireable
         else:
             recorder = None  # type: ignore[assignment]
 

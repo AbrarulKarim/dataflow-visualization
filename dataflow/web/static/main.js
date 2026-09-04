@@ -20,7 +20,9 @@ let pendingSource = null;
 let powerCharts = null;
 // Collapsed rows and chart heights outlive a re-render, so a re-run keeps the
 // layout the user set up.
-const powerViewState = { collapsed: new Set(), heights: new Map() };
+const powerViewState = {
+  collapsed: new Set(), heights: new Map(), showFireable: true, order: [],
+};
 let mode = 'edit';
 let toastTimer = null;
 

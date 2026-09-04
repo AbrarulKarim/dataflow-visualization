@@ -105,6 +105,16 @@ canvas stay in step. A ribbon under the axis repeats the state timeline at
 constant height — sleep power is often a fiftieth of execution power, so those
 stretches would otherwise be a hairline in a true-area plot.
 
+**Arrows above each plot mark the cycles the actor became fireable** — the moment
+work became available, which is not the moment it starts running. The gap between
+an arrow and the execution block after it is what waking up cost: a wakeup ramp,
+or a whole sleep-and-wake round trip if the work arrived mid-shutdown. Fireability
+is computed by the simulator (inputs hold enough tokens *and* every output has
+room), not re-derived in the browser, and only rising edges are marked — an actor
+with a continuous backlog gets one arrow, not one per cycle. **Hide fireable
+marks** turns them off; when a view packs them closer than a few pixels the chart
+draws what it can and says how many it left out.
+
 Each chart zooms and pans on its own, like a waveform viewer: **scroll** to zoom
 around the cursor, **drag** to pan, **double-click** (or ⤢) to fit the whole
 window, and ⇉ to copy one chart's range onto every other actor so they can be
@@ -119,9 +129,11 @@ For a closer look, **⛶** in the panel tab bar expands the panel to the full pa
 (Esc, or switching to Build, returns); each chart's **S / M / L / XL** button
 sets its own height, so one actor can be given room without shrinking the rest;
 and the chevron (or the actor's name) collapses a profile to a one-line summary,
-with **Collapse all** / **Expand all** for the whole list. Heights and collapsed
-rows survive a re-run, so the layout you set up stays put while you sweep
-parameters.
+with **Collapse all** / **Expand all** for the whole list. Profiles are reordered
+by dragging the ⠿ handle (or focusing it and pressing ↑ / ↓), which is easiest
+with everything collapsed. Order, heights and collapsed rows all survive a
+re-run, so the layout you set up stays put while you sweep parameters, and the
+SVG export follows the order on screen.
 
 Charts are drawn at the pixel size they actually occupy — widening the panel adds
 resolution rather than magnifying everything — so a chart goes from about 490px

@@ -129,7 +129,22 @@ def index() -> FileResponse:
     return FileResponse(STATIC_DIR / "index.html")
 
 
-app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+class RevalidatingStaticFiles(StaticFiles):
+    """Serve the editor's assets with ``Cache-Control: no-cache``.
+
+    Without it browsers cache the ES modules heuristically and keep running an
+    old build after the files change -- a reload, even a forced one, does not
+    reliably rebuild a cached module graph. ``no-cache`` means "revalidate",
+    not "do not store": unchanged files still answer 304 from the ETag.
+    """
+
+    def file_response(self, *args: Any, **kwargs: Any) -> Any:
+        response = super().file_response(*args, **kwargs)
+        response.headers["Cache-Control"] = "no-cache"
+        return response
+
+
+app.mount("/static", RevalidatingStaticFiles(directory=STATIC_DIR), name="static")
 
 
 def run() -> None:

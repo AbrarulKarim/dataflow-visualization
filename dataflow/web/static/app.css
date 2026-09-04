@@ -686,3 +686,25 @@ button, input, select { font: inherit; color: inherit; }
 .power-title:hover { color: var(--accent); }
 .power-card.is-collapsed { padding-bottom: 8px; }
 .power-card.is-collapsed .power-stats { margin-bottom: 0; }
+
+/* Fireable markers sit in the plot's top margin, so they need room to breathe. */
+.metric-actions { flex-wrap: wrap; }
+.metric-actions .btn { flex: 1 1 auto; min-width: 96px; }
+
+/* ------------------------------------------------------- reorderable list */
+.power-list { display: flex; flex-direction: column; }
+
+.chart-grip {
+  padding: 1px 4px;
+  font-size: 11px;
+  line-height: 1.2;
+  color: var(--text-faint);
+  cursor: grab;
+}
+.chart-grip:active { cursor: grabbing; }
+
+.power-card.is-dragging {
+  opacity: 0.45;
+  outline: 2px dashed var(--accent);
+  outline-offset: -2px;
+}
