@@ -17,7 +17,13 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from ..model import graph_from_dict, graph_to_dict, load_graph
-from ..model.actor import KIND_INFO, PowerModel, SleepPolicy, TimingModel
+from ..model.actor import (
+    ADAPTIVE_STRATEGY_INFO,
+    KIND_INFO,
+    PowerModel,
+    SleepPolicy,
+    TimingModel,
+)
 from ..sim import Simulator, TraceConfig
 
 STATIC_DIR = Path(__file__).parent / "static"
@@ -59,6 +65,12 @@ def defaults() -> dict[str, Any]:
         "timing": asdict(TimingModel()),
         "sleep_policy": asdict(SleepPolicy()),
         "sleep_kinds": ["never", "immediate", "timeout", "adaptive"],
+        # Sub-choices for the "adaptive" sleep kind, same one-place-of-truth
+        # pattern as actor_kinds below.
+        "adaptive_strategies": [
+            {"value": key, "label": info.label, "summary": info.summary}
+            for key, info in ADAPTIVE_STRATEGY_INFO.items()
+        ],
         # The UI builds its actor palette and type menu from this, so the naming
         # and grouping live in one place: the model.
         "actor_kinds": [

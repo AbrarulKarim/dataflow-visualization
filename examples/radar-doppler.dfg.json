@@ -1,0 +1,227 @@
+{
+  "version": 1,
+  "name": "radar-doppler",
+  "actors": [
+    {
+      "id": "rx_array",
+      "name": "rx_array",
+      "kind": "source",
+      "phases": 1,
+      "position": [
+        80,
+        240
+      ],
+      "power": {
+        "exec_power": 1.0,
+        "idle_power": 0.4,
+        "sleep_power": 0.02,
+        "shutdown_power": 0.5,
+        "wakeup_power": 0.8
+      },
+      "timing": {
+        "exec_time": 10,
+        "sleep_delay": 2,
+        "wakeup_delay": 3
+      },
+      "sleep_policy": {
+        "kind": "never",
+        "timeout": 0
+      },
+      "distribution": {
+        "kind": "constant",
+        "mean": 250,
+        "stddev": 0.0,
+        "low": 1.0,
+        "high": 1.0,
+        "expression": ""
+      }
+    },
+    {
+      "id": "pulse_compress",
+      "name": "pulse_compress",
+      "kind": "static_rate",
+      "phases": 1,
+      "position": [
+        320,
+        240
+      ],
+      "power": {
+        "exec_power": 2.0,
+        "idle_power": 0.6,
+        "sleep_power": 0.02,
+        "shutdown_power": 0.5,
+        "wakeup_power": 0.8
+      },
+      "timing": {
+        "exec_time": 45,
+        "sleep_delay": 2,
+        "wakeup_delay": 3
+      },
+      "sleep_policy": {
+        "kind": "timeout",
+        "timeout": 80
+      }
+    },
+    {
+      "id": "corner_turn",
+      "name": "corner_turn",
+      "kind": "phased_rate",
+      "phases": 4,
+      "position": [
+        560,
+        240
+      ],
+      "power": {
+        "exec_power": 0.7,
+        "idle_power": 0.3,
+        "sleep_power": 0.02,
+        "shutdown_power": 0.5,
+        "wakeup_power": 0.8
+      },
+      "timing": {
+        "exec_time": 12,
+        "sleep_delay": 2,
+        "wakeup_delay": 3
+      },
+      "sleep_policy": {
+        "kind": "timeout",
+        "timeout": 200
+      }
+    },
+    {
+      "id": "doppler_fft",
+      "name": "doppler_fft",
+      "kind": "static_rate",
+      "phases": 1,
+      "position": [
+        800,
+        240
+      ],
+      "power": {
+        "exec_power": 2.6,
+        "idle_power": 0.7,
+        "sleep_power": 0.02,
+        "shutdown_power": 0.5,
+        "wakeup_power": 0.8
+      },
+      "timing": {
+        "exec_time": 120,
+        "sleep_delay": 8,
+        "wakeup_delay": 22
+      },
+      "sleep_policy": {
+        "kind": "timeout",
+        "timeout": 100
+      }
+    },
+    {
+      "id": "cfar",
+      "name": "cfar",
+      "kind": "static_rate",
+      "phases": 1,
+      "position": [
+        1040,
+        240
+      ],
+      "power": {
+        "exec_power": 1.2,
+        "idle_power": 0.4,
+        "sleep_power": 0.02,
+        "shutdown_power": 0.5,
+        "wakeup_power": 0.8
+      },
+      "timing": {
+        "exec_time": 30,
+        "sleep_delay": 5,
+        "wakeup_delay": 12
+      },
+      "sleep_policy": {
+        "kind": "immediate",
+        "timeout": 0
+      }
+    },
+    {
+      "id": "tracker",
+      "name": "tracker",
+      "kind": "sink",
+      "phases": 1,
+      "position": [
+        1280,
+        240
+      ],
+      "power": {
+        "exec_power": 0.4,
+        "idle_power": 0.15,
+        "sleep_power": 0.02,
+        "shutdown_power": 0.5,
+        "wakeup_power": 0.8
+      },
+      "timing": {
+        "exec_time": 15,
+        "sleep_delay": 2,
+        "wakeup_delay": 3
+      },
+      "sleep_policy": {
+        "kind": "never",
+        "timeout": 0
+      }
+    }
+  ],
+  "channels": [
+    {
+      "id": "ch1",
+      "name": "",
+      "src": "rx_array",
+      "dst": "pulse_compress",
+      "capacity": 256,
+      "initial_tokens": 0,
+      "production_rate": 64,
+      "consumption_rate": 64
+    },
+    {
+      "id": "ch2",
+      "name": "",
+      "src": "pulse_compress",
+      "dst": "corner_turn",
+      "capacity": 256,
+      "initial_tokens": 0,
+      "production_rate": 64,
+      "consumption_rate": 64
+    },
+    {
+      "id": "ch3",
+      "name": "",
+      "src": "corner_turn",
+      "dst": "doppler_fft",
+      "capacity": 768,
+      "initial_tokens": 0,
+      "production_rate": [
+        0,
+        0,
+        0,
+        256
+      ],
+      "consumption_rate": 256
+    },
+    {
+      "id": "ch4",
+      "name": "",
+      "src": "doppler_fft",
+      "dst": "cfar",
+      "capacity": 768,
+      "initial_tokens": 0,
+      "production_rate": 256,
+      "consumption_rate": 256
+    },
+    {
+      "id": "ch5",
+      "name": "",
+      "src": "cfar",
+      "dst": "tracker",
+      "capacity": 16,
+      "initial_tokens": 0,
+      "production_rate": 4,
+      "consumption_rate": 4
+    }
+  ]
+}

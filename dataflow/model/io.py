@@ -146,10 +146,18 @@ class GraphBuilder:
         phases: int = 1,
         sleep: str = "never",
         timeout: int = 0,
+        adaptive_strategy: str = "weighted_moving_average",
+        wma_factor: float = 50.0,
+        wma_window: int = 5,
         position: tuple[float, float] = (0.0, 0.0),
         **params: float,
     ) -> Actor:
-        """Add an actor. ``params`` may set any power/timing field by name."""
+        """Add an actor. ``params`` may set any power/timing field by name.
+
+        ``adaptive_strategy``, ``wma_factor`` and ``wma_window`` only matter
+        when ``sleep="adaptive"``; see
+        :class:`~dataflow.model.actor.SleepPolicy`.
+        """
         power_fields = set(vars(PowerModel()))
         timing_fields = set(vars(TimingModel()))
         power = PowerModel(**{k: v for k, v in params.items() if k in power_fields})
@@ -168,7 +176,10 @@ class GraphBuilder:
                 kind=parse_kind(kind),
                 power=power,
                 timing=timing,
-                sleep_policy=SleepPolicy(kind=sleep, timeout=timeout),
+                sleep_policy=SleepPolicy(
+                    kind=sleep, timeout=timeout, adaptive_strategy=adaptive_strategy,
+                    wma_factor=wma_factor, wma_window=wma_window,
+                ),
                 phases=phases,
                 position=position,
             )

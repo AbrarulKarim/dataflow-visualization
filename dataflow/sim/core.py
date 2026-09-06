@@ -20,7 +20,9 @@ be picked up by a downstream actor in the very same cycle.
 
 from __future__ import annotations
 
+import math
 import random
+from collections import deque
 from typing import Iterable
 
 from ..model.actor import Actor, ActorKind, ActorState
@@ -38,8 +40,9 @@ class ActorRuntime:
 
     __slots__ = (
         "actor", "inputs", "outputs", "state", "until", "idle_since", "phase",
-        "firings", "pending_consume", "pending_produce", "next_fire",
+        "firings", "wakeups", "pending_consume", "pending_produce", "next_fire",
         "state_cycles", "tokens_in", "tokens_out", "was_fireable",
+        "last_fireable_at", "fireable_gaps",
     )
 
     def __init__(self, actor: Actor, inputs: list[Channel], outputs: list[Channel]):
@@ -51,6 +54,7 @@ class ActorRuntime:
         self.idle_since: int | None = 0
         self.phase = 0
         self.firings = 0
+        self.wakeups = 0
         self.pending_consume: list[tuple[Channel, int]] = []
         self.pending_produce: list[tuple[Channel, int]] = []
         self.next_fire = 0  # sources only
@@ -58,10 +62,27 @@ class ActorRuntime:
         self.tokens_in = 0
         self.tokens_out = 0
         self.was_fireable = False
+        self.last_fireable_at: int | None = None
+        # Bounded to the adaptive policy's own window (N), so this never grows
+        # past what the policy actually looks at, however long the run is.
+        window = actor.sleep_policy.wma_window if actor.sleep_policy.kind == "adaptive" else 1
+        self.fireable_gaps: deque[int] = deque(maxlen=max(1, window))
 
     @property
     def id(self) -> str:
         return self.actor.id
+
+    def note_fireable(self, t: int) -> None:
+        """Record the gap since this actor last became fireable.
+
+        Feeds the adaptive sleep policy's moving average. Gaps are measured
+        between fireability *rising edges* -- the moment work becomes available,
+        independent of whether the actor was awake to act on it -- so a sleeping
+        or waking actor's demand pattern is tracked the same as an awake one's.
+        """
+        if self.last_fireable_at is not None:
+            self.fireable_gaps.append(t - self.last_fireable_at)
+        self.last_fireable_at = t
 
 
 class SimulationCore:
@@ -139,13 +160,12 @@ class SimulationCore:
         for rt in self.order:
             if rt.state in TIMED_STATES and rt.until == t:
                 self._complete(rt, t)
-        if self.on_fireable is not None:
-            self._report_fireable(t)
+        self._report_fireable(t)
         for rt in self.order:
             self._decide(rt, t)
 
     def _report_fireable(self, t: int) -> None:
-        """Report actors that have just become fireable.
+        """Detect fireability rising edges: actors that just became fireable.
 
         Evaluated after the completions have moved tokens but *before* any
         decision is taken, which is what "work is available entering this cycle"
@@ -155,11 +175,23 @@ class SimulationCore:
         Fireability only changes when a firing completes or a source's arrival
         comes due, and both are cycle boundaries, so sampling here catches every
         transition -- in the event engine as much as in the tick loop.
+
+        Two independent things read a rising edge -- the trace (``on_fireable``,
+        only when recording) and an adaptive sleep policy's gap history (only
+        for actors using one) -- so this always runs the loop, but only pays for
+        the ``fireable()`` recheck on actors that actually need one of them.
         """
+        want_trace = self.on_fireable is not None
         for rt in self.order:
+            wants_adaptive = rt.actor.sleep_policy.kind == "adaptive"
+            if not want_trace and not wants_adaptive:
+                continue
             now = self.fireable(rt, t)
             if now and not rt.was_fireable:
-                self.on_fireable(t, rt.id)
+                if want_trace:
+                    self.on_fireable(t, rt.id)
+                if wants_adaptive:
+                    rt.note_fireable(t)
             rt.was_fireable = now
 
     def _complete(self, rt: ActorRuntime, t: int) -> None:
@@ -197,7 +229,7 @@ class SimulationCore:
                 if rt.idle_since is None:
                     rt.idle_since = t
                 if rt.actor.can_sleep and rt.actor.sleep_policy.should_sleep(
-                    t - rt.idle_since
+                    t - rt.idle_since, rt.fireable_gaps, rt.actor.timing.exec_time
                 ):
                     if rt.actor.timing.sleep_delay == 0:
                         self._set_state(rt, ActorState.SLEEPING, t)
@@ -210,6 +242,10 @@ class SimulationCore:
                 # actor is fully asleep; waking costs the full wakeup delay.
                 if not self.fireable(rt, t):
                     return
+                # Counted here, once per sleep->wake event, whether or not the
+                # actor actually passes through the WAKEUP state below -- a
+                # zero-length wakeup delay still means it woke up.
+                rt.wakeups += 1
                 if rt.actor.timing.wakeup_delay == 0:
                     self._set_state(rt, ActorState.IDLE, t)
                     rt.idle_since = None
@@ -260,6 +296,17 @@ class SimulationCore:
 
         Token counts only move when a firing completes, so fireability can only
         change at a completion, a source's next arrival, or a sleep deadline.
+
+        A sleep deadline must be predicted with the *same* threshold
+        ``_decide``/``should_sleep`` would use if asked at every intervening
+        cycle -- for ``adaptive`` that is recomputed from ``fireable_gaps``,
+        which cannot change while this actor stays non-fireable (a rising edge
+        is exactly what would end the stretch we're predicting through), so the
+        value read here is exactly what it will still be at the deadline. An
+        adaptive timeout can be fractional (``X / avg_gap``), so the deadline is
+        ceiled to the first integer cycle at which ``idle_cycles >= timeout``
+        actually holds -- flooring it would let the event engine stop one cycle
+        short and stall making no progress.
         """
         nxt = INF
         for rt in self.order:
@@ -272,7 +319,10 @@ class SimulationCore:
                 elif rt.actor.can_sleep and rt.idle_since is not None:
                     policy = rt.actor.sleep_policy
                     if policy.kind in ("timeout", "adaptive"):
-                        deadline = rt.idle_since + policy.timeout
+                        threshold = policy.effective_timeout(
+                            rt.fireable_gaps, rt.actor.timing.exec_time
+                        )
+                        deadline = math.ceil(rt.idle_since + threshold)
                         if deadline > t:
                             nxt = min(nxt, deadline)
             if nxt == t + 1:

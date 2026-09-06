@@ -207,23 +207,56 @@ export class Inspector {
       }));
     } else {
       const policy = actor.sleep_policy;
-      parts.push(section('Sleep strategy', [
+      const policyFields = [
         field('Policy', selectInput(
           this.defaults.sleep_kinds.map((k) => [k, k]),
           policy.kind,
           (value) => { policy.kind = value; this.touch(); this.showActor(node); },
         ), { wide: policy.kind === 'never' || policy.kind === 'immediate' }),
-        (policy.kind === 'timeout' || policy.kind === 'adaptive')
-          ? field('Idle timeout', numberInput(policy.timeout, (value) => {
-            policy.timeout = Math.max(0, Math.round(value));
-            this.touch();
-          }, { step: 1, min: 0 }))
-          : null,
-      ]));
+      ];
+
+      if (policy.kind === 'timeout') {
+        policyFields.push(field('Idle timeout', numberInput(policy.timeout, (value) => {
+          policy.timeout = Math.max(0, Math.round(value));
+          this.touch();
+        }, { step: 1, min: 0 })));
+      }
+
       if (policy.kind === 'adaptive') {
+        policyFields.push(field('Strategy', selectInput(
+          this.defaults.adaptive_strategies.map((s) => [s.value, s.label]),
+          policy.adaptive_strategy,
+          (value) => { policy.adaptive_strategy = value; this.touch(); this.showActor(node); },
+        ), { wide: true }));
+
+        if (policy.adaptive_strategy === 'weighted_moving_average') {
+          policyFields.push(
+            field('X (numerator)', numberInput(policy.wma_factor, (value) => {
+              policy.wma_factor = Math.max(0, value);
+              this.touch();
+            }, { min: 0 })),
+            field('N (window)', numberInput(policy.wma_window, (value) => {
+              policy.wma_window = Math.max(1, Math.round(value));
+              this.touch();
+            }, { step: 1, min: 1 })),
+          );
+        }
+
+        policyFields.push(field('Bootstrap timeout', numberInput(policy.timeout, (value) => {
+          policy.timeout = Math.max(0, Math.round(value));
+          this.touch();
+        }, { step: 1, min: 0 }), { wide: true }));
+      }
+
+      parts.push(section('Sleep strategy', policyFields));
+
+      if (policy.kind === 'adaptive' && policy.adaptive_strategy === 'weighted_moving_average') {
         parts.push(el('p', {
           class: 'hint',
-          text: 'Adaptive policies are not implemented yet; this behaves as a timeout.',
+          text: 'Sleep delay = X × execution time / (average of the last N fireability '
+            + 'gaps): frequent arrivals keep the actor awake longer, rare ones send it '
+            + 'to sleep sooner. Bootstrap timeout applies until N gaps have been '
+            + 'observed.',
         }));
       }
       parts.push(el('p', {

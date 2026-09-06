@@ -13,6 +13,7 @@ from dataflow.model import (
     DataflowGraph,
     Distribution,
     GraphBuilder,
+    SleepPolicy,
     ValidationError,
     graph_from_dict,
     graph_to_dict,
@@ -92,15 +93,63 @@ def test_unknown_actor_parameter_is_rejected():
         b.actor("a", nonsense_power=3)
 
 
+# --------------------------------------------------------------------------- #
+# Adaptive sleep policy: weighted moving average
+# --------------------------------------------------------------------------- #
+
+
+def test_adaptive_policy_rejects_bad_parameters():
+    with pytest.raises(ValueError, match="window"):
+        SleepPolicy(kind="adaptive", wma_window=0)
+    with pytest.raises(ValueError, match="factor"):
+        SleepPolicy(kind="adaptive", wma_factor=-1)
+
+
+def test_adaptive_timeout_is_x_times_exec_time_over_the_average_gap():
+    policy = SleepPolicy(kind="adaptive", wma_factor=100, wma_window=5)
+    assert policy.effective_timeout([10, 20, 30], exec_time=4) == pytest.approx(100 * 4 / 20)
+    assert policy.effective_timeout([5], exec_time=1) == pytest.approx(100 * 1 / 5)
+    # wma_window bounds how many gaps are averaged (enforced by the bounded
+    # history deque in the simulation core); it does not appear in the formula
+    # itself, so changing it alone must not change the result for a fixed set
+    # of gaps.
+    same_gaps = SleepPolicy(kind="adaptive", wma_factor=100, wma_window=2)
+    assert same_gaps.effective_timeout([10, 20, 30], exec_time=4) \
+        == policy.effective_timeout([10, 20, 30], exec_time=4)
+
+
+def test_adaptive_timeout_bootstraps_from_the_configured_timeout():
+    """No gap history yet -- as at the very start of a run -- falls back."""
+    policy = SleepPolicy(kind="adaptive", wma_factor=100, timeout=7)
+    assert policy.effective_timeout([]) == 7
+    # A degenerate (non-positive) average is equally "no usable signal".
+    assert policy.effective_timeout([0, 0]) == 7
+
+
+def test_should_sleep_adaptive_matches_the_computed_threshold():
+    policy = SleepPolicy(kind="adaptive", wma_factor=30)
+    gaps = [10, 10, 10]  # average 10, exec_time 5 -> threshold 30*5/10 = 15
+    assert not policy.should_sleep(14, gaps, exec_time=5)
+    assert policy.should_sleep(15, gaps, exec_time=5)
+
+
+def test_timeout_and_never_kinds_ignore_adaptive_fields():
+    policy = SleepPolicy(kind="timeout", timeout=12, wma_factor=999, wma_window=1)
+    assert policy.effective_timeout([1, 2, 3], exec_time=99) == 12
+    assert not SleepPolicy(kind="never", wma_factor=0).should_sleep(10**6, [1], exec_time=99)
+
+
 def test_json_round_trip(tmp_path):
     b = GraphBuilder("demo")
     b.source("src", interval=7, distribution="gaussian", stddev=1.5,
              exec_time=2, idle_power=0.11)
     b.actor("a", kind="phased_rate", phases=2, exec_time=3,
             sleep="timeout", timeout=9, sleep_power=0.05, wakeup_delay=4)
+    b.actor("adaptive_actor", sleep="adaptive", wma_factor=42.5, wma_window=6)
     b.sink("snk")
     b.connect("src", "a", capacity=8, initial_tokens=2)
-    b.connect("a", "snk", produce=[1, 2], consume=1)
+    b.connect("a", "adaptive_actor", produce=[1, 2], consume=1, capacity=8)
+    b.connect("adaptive_actor", "snk", capacity=8)
     graph = b.build()
 
     path = tmp_path / "demo.dfg.json"
@@ -113,6 +162,12 @@ def test_json_round_trip(tmp_path):
     assert reloaded.actors["src"].distribution.kind == "gaussian"
     assert reloaded.channels["ch2"].production_rate == [1, 2]
     assert json.loads(path.read_text())["version"] == 1
+
+    adaptive = reloaded.actors["adaptive_actor"].sleep_policy
+    assert adaptive.kind == "adaptive"
+    assert adaptive.wma_factor == pytest.approx(42.5)
+    assert adaptive.wma_window == 6
+    assert adaptive.adaptive_strategy == "weighted_moving_average"
 
 
 def test_pre_rename_actor_kinds_still_load():

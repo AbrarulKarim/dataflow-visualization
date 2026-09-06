@@ -1,0 +1,612 @@
+{
+  "version": 1,
+  "name": "hevc-encoder",
+  "actors": [
+    {
+      "id": "raw_video",
+      "name": "raw_video",
+      "kind": "source",
+      "phases": 1,
+      "position": [
+        80,
+        220
+      ],
+      "power": {
+        "exec_power": 0.6,
+        "idle_power": 0.25,
+        "sleep_power": 0.02,
+        "shutdown_power": 0.5,
+        "wakeup_power": 0.8
+      },
+      "timing": {
+        "exec_time": 20,
+        "sleep_delay": 2,
+        "wakeup_delay": 3
+      },
+      "sleep_policy": {
+        "kind": "never",
+        "timeout": 0
+      },
+      "distribution": {
+        "kind": "gaussian",
+        "mean": 4000,
+        "stddev": 60,
+        "low": 1.0,
+        "high": 1.0,
+        "expression": ""
+      }
+    },
+    {
+      "id": "ctu_split",
+      "name": "ctu_split",
+      "kind": "static_rate",
+      "phases": 1,
+      "position": [
+        280,
+        220
+      ],
+      "power": {
+        "exec_power": 0.7,
+        "idle_power": 0.3,
+        "sleep_power": 0.02,
+        "shutdown_power": 0.5,
+        "wakeup_power": 0.8
+      },
+      "timing": {
+        "exec_time": 30,
+        "sleep_delay": 2,
+        "wakeup_delay": 3
+      },
+      "sleep_policy": {
+        "kind": "timeout",
+        "timeout": 300
+      }
+    },
+    {
+      "id": "motion_est",
+      "name": "motion_est",
+      "kind": "static_rate",
+      "phases": 1,
+      "position": [
+        520,
+        220
+      ],
+      "power": {
+        "exec_power": 3.4,
+        "idle_power": 0.9,
+        "sleep_power": 0.02,
+        "shutdown_power": 0.5,
+        "wakeup_power": 0.8
+      },
+      "timing": {
+        "exec_time": 120,
+        "sleep_delay": 10,
+        "wakeup_delay": 30
+      },
+      "sleep_policy": {
+        "kind": "timeout",
+        "timeout": 200
+      }
+    },
+    {
+      "id": "intra_pred",
+      "name": "intra_pred",
+      "kind": "static_rate",
+      "phases": 1,
+      "position": [
+        520,
+        70
+      ],
+      "power": {
+        "exec_power": 1.5,
+        "idle_power": 0.5,
+        "sleep_power": 0.02,
+        "shutdown_power": 0.5,
+        "wakeup_power": 0.8
+      },
+      "timing": {
+        "exec_time": 45,
+        "sleep_delay": 2,
+        "wakeup_delay": 3
+      },
+      "sleep_policy": {
+        "kind": "timeout",
+        "timeout": 200
+      }
+    },
+    {
+      "id": "mode_decide",
+      "name": "mode_decide",
+      "kind": "static_rate",
+      "phases": 1,
+      "position": [
+        760,
+        220
+      ],
+      "power": {
+        "exec_power": 1.3,
+        "idle_power": 0.45,
+        "sleep_power": 0.02,
+        "shutdown_power": 0.5,
+        "wakeup_power": 0.8
+      },
+      "timing": {
+        "exec_time": 35,
+        "sleep_delay": 2,
+        "wakeup_delay": 3
+      },
+      "sleep_policy": {
+        "kind": "timeout",
+        "timeout": 150
+      }
+    },
+    {
+      "id": "transform",
+      "name": "transform",
+      "kind": "static_rate",
+      "phases": 1,
+      "position": [
+        960,
+        220
+      ],
+      "power": {
+        "exec_power": 1.2,
+        "idle_power": 0.4,
+        "sleep_power": 0.02,
+        "shutdown_power": 0.5,
+        "wakeup_power": 0.8
+      },
+      "timing": {
+        "exec_time": 28,
+        "sleep_delay": 2,
+        "wakeup_delay": 3
+      },
+      "sleep_policy": {
+        "kind": "timeout",
+        "timeout": 150
+      }
+    },
+    {
+      "id": "quantize",
+      "name": "quantize",
+      "kind": "static_rate",
+      "phases": 1,
+      "position": [
+        1160,
+        220
+      ],
+      "power": {
+        "exec_power": 0.8,
+        "idle_power": 0.3,
+        "sleep_power": 0.02,
+        "shutdown_power": 0.5,
+        "wakeup_power": 0.8
+      },
+      "timing": {
+        "exec_time": 18,
+        "sleep_delay": 2,
+        "wakeup_delay": 3
+      },
+      "sleep_policy": {
+        "kind": "timeout",
+        "timeout": 150
+      }
+    },
+    {
+      "id": "entropy",
+      "name": "entropy",
+      "kind": "static_rate",
+      "phases": 1,
+      "position": [
+        1400,
+        220
+      ],
+      "power": {
+        "exec_power": 2.1,
+        "idle_power": 0.7,
+        "sleep_power": 0.02,
+        "shutdown_power": 0.5,
+        "wakeup_power": 0.8
+      },
+      "timing": {
+        "exec_time": 140,
+        "sleep_delay": 2,
+        "wakeup_delay": 3
+      },
+      "sleep_policy": {
+        "kind": "timeout",
+        "timeout": 400
+      }
+    },
+    {
+      "id": "rate_ctrl",
+      "name": "rate_ctrl",
+      "kind": "static_rate",
+      "phases": 1,
+      "position": [
+        1310,
+        60
+      ],
+      "power": {
+        "exec_power": 0.5,
+        "idle_power": 0.2,
+        "sleep_power": 0.02,
+        "shutdown_power": 0.5,
+        "wakeup_power": 0.8
+      },
+      "timing": {
+        "exec_time": 25,
+        "sleep_delay": 5,
+        "wakeup_delay": 15
+      },
+      "sleep_policy": {
+        "kind": "immediate",
+        "timeout": 0
+      }
+    },
+    {
+      "id": "bitstream",
+      "name": "bitstream",
+      "kind": "sink",
+      "phases": 1,
+      "position": [
+        1620,
+        220
+      ],
+      "power": {
+        "exec_power": 0.4,
+        "idle_power": 0.15,
+        "sleep_power": 0.02,
+        "shutdown_power": 0.5,
+        "wakeup_power": 0.8
+      },
+      "timing": {
+        "exec_time": 12,
+        "sleep_delay": 2,
+        "wakeup_delay": 3
+      },
+      "sleep_policy": {
+        "kind": "never",
+        "timeout": 0
+      }
+    },
+    {
+      "id": "dequant",
+      "name": "dequant",
+      "kind": "static_rate",
+      "phases": 1,
+      "position": [
+        1160,
+        440
+      ],
+      "power": {
+        "exec_power": 0.7,
+        "idle_power": 0.28,
+        "sleep_power": 0.02,
+        "shutdown_power": 0.5,
+        "wakeup_power": 0.8
+      },
+      "timing": {
+        "exec_time": 16,
+        "sleep_delay": 2,
+        "wakeup_delay": 3
+      },
+      "sleep_policy": {
+        "kind": "timeout",
+        "timeout": 150
+      }
+    },
+    {
+      "id": "itransform",
+      "name": "itransform",
+      "kind": "static_rate",
+      "phases": 1,
+      "position": [
+        980,
+        440
+      ],
+      "power": {
+        "exec_power": 1.2,
+        "idle_power": 0.4,
+        "sleep_power": 0.02,
+        "shutdown_power": 0.5,
+        "wakeup_power": 0.8
+      },
+      "timing": {
+        "exec_time": 28,
+        "sleep_delay": 2,
+        "wakeup_delay": 3
+      },
+      "sleep_policy": {
+        "kind": "timeout",
+        "timeout": 150
+      }
+    },
+    {
+      "id": "reconstruct",
+      "name": "reconstruct",
+      "kind": "static_rate",
+      "phases": 1,
+      "position": [
+        800,
+        440
+      ],
+      "power": {
+        "exec_power": 0.9,
+        "idle_power": 0.35,
+        "sleep_power": 0.02,
+        "shutdown_power": 0.5,
+        "wakeup_power": 0.8
+      },
+      "timing": {
+        "exec_time": 22,
+        "sleep_delay": 2,
+        "wakeup_delay": 3
+      },
+      "sleep_policy": {
+        "kind": "timeout",
+        "timeout": 150
+      }
+    },
+    {
+      "id": "deblock",
+      "name": "deblock",
+      "kind": "static_rate",
+      "phases": 1,
+      "position": [
+        620,
+        440
+      ],
+      "power": {
+        "exec_power": 1.1,
+        "idle_power": 0.4,
+        "sleep_power": 0.02,
+        "shutdown_power": 0.5,
+        "wakeup_power": 0.8
+      },
+      "timing": {
+        "exec_time": 34,
+        "sleep_delay": 2,
+        "wakeup_delay": 3
+      },
+      "sleep_policy": {
+        "kind": "timeout",
+        "timeout": 150
+      }
+    },
+    {
+      "id": "sao",
+      "name": "sao",
+      "kind": "static_rate",
+      "phases": 1,
+      "position": [
+        440,
+        440
+      ],
+      "power": {
+        "exec_power": 0.9,
+        "idle_power": 0.35,
+        "sleep_power": 0.02,
+        "shutdown_power": 0.5,
+        "wakeup_power": 0.8
+      },
+      "timing": {
+        "exec_time": 26,
+        "sleep_delay": 2,
+        "wakeup_delay": 3
+      },
+      "sleep_policy": {
+        "kind": "timeout",
+        "timeout": 150
+      }
+    },
+    {
+      "id": "dpb",
+      "name": "dpb",
+      "kind": "static_rate",
+      "phases": 1,
+      "position": [
+        260,
+        440
+      ],
+      "power": {
+        "exec_power": 0.6,
+        "idle_power": 0.5,
+        "sleep_power": 0.02,
+        "shutdown_power": 0.5,
+        "wakeup_power": 0.8
+      },
+      "timing": {
+        "exec_time": 40,
+        "sleep_delay": 2,
+        "wakeup_delay": 3
+      },
+      "sleep_policy": {
+        "kind": "timeout",
+        "timeout": 500
+      }
+    }
+  ],
+  "channels": [
+    {
+      "id": "ch1",
+      "name": "",
+      "src": "raw_video",
+      "dst": "ctu_split",
+      "capacity": 3,
+      "initial_tokens": 0,
+      "production_rate": 1,
+      "consumption_rate": 1
+    },
+    {
+      "id": "ch2",
+      "name": "",
+      "src": "ctu_split",
+      "dst": "motion_est",
+      "capacity": 40,
+      "initial_tokens": 0,
+      "production_rate": 16,
+      "consumption_rate": 1
+    },
+    {
+      "id": "ch3",
+      "name": "",
+      "src": "ctu_split",
+      "dst": "intra_pred",
+      "capacity": 40,
+      "initial_tokens": 0,
+      "production_rate": 16,
+      "consumption_rate": 1
+    },
+    {
+      "id": "ch4",
+      "name": "",
+      "src": "motion_est",
+      "dst": "mode_decide",
+      "capacity": 24,
+      "initial_tokens": 0,
+      "production_rate": 1,
+      "consumption_rate": 1
+    },
+    {
+      "id": "ch5",
+      "name": "",
+      "src": "intra_pred",
+      "dst": "mode_decide",
+      "capacity": 24,
+      "initial_tokens": 0,
+      "production_rate": 1,
+      "consumption_rate": 1
+    },
+    {
+      "id": "ch6",
+      "name": "",
+      "src": "mode_decide",
+      "dst": "transform",
+      "capacity": 24,
+      "initial_tokens": 0,
+      "production_rate": 1,
+      "consumption_rate": 1
+    },
+    {
+      "id": "ch7",
+      "name": "",
+      "src": "transform",
+      "dst": "quantize",
+      "capacity": 24,
+      "initial_tokens": 0,
+      "production_rate": 1,
+      "consumption_rate": 1
+    },
+    {
+      "id": "ch8",
+      "name": "",
+      "src": "quantize",
+      "dst": "entropy",
+      "capacity": 40,
+      "initial_tokens": 0,
+      "production_rate": 1,
+      "consumption_rate": 16
+    },
+    {
+      "id": "ch9",
+      "name": "",
+      "src": "quantize",
+      "dst": "dequant",
+      "capacity": 24,
+      "initial_tokens": 0,
+      "production_rate": 1,
+      "consumption_rate": 1
+    },
+    {
+      "id": "ch10",
+      "name": "",
+      "src": "entropy",
+      "dst": "bitstream",
+      "capacity": 3,
+      "initial_tokens": 0,
+      "production_rate": 1,
+      "consumption_rate": 1
+    },
+    {
+      "id": "ch11",
+      "name": "",
+      "src": "dequant",
+      "dst": "itransform",
+      "capacity": 24,
+      "initial_tokens": 0,
+      "production_rate": 1,
+      "consumption_rate": 1
+    },
+    {
+      "id": "ch12",
+      "name": "",
+      "src": "itransform",
+      "dst": "reconstruct",
+      "capacity": 24,
+      "initial_tokens": 0,
+      "production_rate": 1,
+      "consumption_rate": 1
+    },
+    {
+      "id": "ch13",
+      "name": "",
+      "src": "reconstruct",
+      "dst": "deblock",
+      "capacity": 24,
+      "initial_tokens": 0,
+      "production_rate": 1,
+      "consumption_rate": 1
+    },
+    {
+      "id": "ch14",
+      "name": "",
+      "src": "deblock",
+      "dst": "sao",
+      "capacity": 24,
+      "initial_tokens": 0,
+      "production_rate": 1,
+      "consumption_rate": 1
+    },
+    {
+      "id": "ch15",
+      "name": "",
+      "src": "sao",
+      "dst": "dpb",
+      "capacity": 40,
+      "initial_tokens": 0,
+      "production_rate": 1,
+      "consumption_rate": 16
+    },
+    {
+      "id": "reference",
+      "name": "",
+      "src": "dpb",
+      "dst": "motion_est",
+      "capacity": 40,
+      "initial_tokens": 16,
+      "production_rate": 16,
+      "consumption_rate": 1
+    },
+    {
+      "id": "ch17",
+      "name": "",
+      "src": "entropy",
+      "dst": "rate_ctrl",
+      "capacity": 3,
+      "initial_tokens": 0,
+      "production_rate": 1,
+      "consumption_rate": 1
+    },
+    {
+      "id": "qp",
+      "name": "",
+      "src": "rate_ctrl",
+      "dst": "quantize",
+      "capacity": 40,
+      "initial_tokens": 16,
+      "production_rate": 16,
+      "consumption_rate": 1
+    }
+  ]
+}

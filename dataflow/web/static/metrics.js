@@ -28,6 +28,20 @@ function number(value, digits = 3) {
   return trimmed || '0';
 }
 
+/**
+ * A ratio that may be genuinely infinite (sleeping with zero idle cycles to
+ * divide by). JSON has no literal for infinity, so the API sends the string
+ * "Infinity" / "-Infinity" instead of a bare numeric token the browser's
+ * JSON.parse would refuse to parse -- render that sentinel as an actual
+ * infinity symbol rather than running it through `number()`, which would
+ * just read it as not-a-number and fall back to a generic "no value" dash.
+ */
+function ratioText(value, digits = 3) {
+  if (value === 'Infinity') return '∞';
+  if (value === '-Infinity') return '-∞';
+  return number(value, digits);
+}
+
 function stat(label, value, unit) {
   const box = el('div', { class: 'stat' });
   const dd = el('dd', { text: value });
@@ -46,10 +60,12 @@ export function download(filename, content, type = 'application/json') {
 }
 
 export function toCSV(metrics) {
-  const header = ['id', 'name', 'kind', 'firings', 'utilization', 'energy', 'avg_power',
+  const header = ['id', 'name', 'kind', 'firings', 'wakeups', 'utilization',
+    'sleep_idle_ratio', 'wakeup_firing_ratio', 'energy', 'avg_power',
     'tokens_in', 'tokens_out', ...STATES];
   const rows = metrics.actors.map((actor) => [
-    actor.id, actor.name, actor.kind, actor.firings, actor.utilization,
+    actor.id, actor.name, actor.kind, actor.firings, actor.wakeups, actor.utilization,
+    actor.sleep_idle_ratio, actor.wakeup_firing_ratio,
     actor.energy, actor.avg_power, actor.tokens_in, actor.tokens_out,
     ...STATES.map((state) => actor.state_cycles[state]),
   ]);
@@ -57,11 +73,14 @@ export function toCSV(metrics) {
 }
 
 export function renderMetrics(container, metrics, { graphName }) {
+  const sinks = metrics.actors.filter((actor) => actor.kind === 'sink');
+
   const stats = el('dl', { class: 'stat-grid' });
   stats.append(
-    stat('Throughput', number(metrics.throughput, 5), 'tok/cyc'),
-    stat('Energy', number(metrics.energy, 1)),
     stat('Avg power', number(metrics.avg_power, 4)),
+    stat('Energy', number(metrics.energy, 1)),
+    stat(sinks.length > 1 ? 'Throughput (sum)' : 'Throughput',
+      number(metrics.throughput, 5), 'tok/cyc'),
     stat('Tokens out', number(metrics.tokens_consumed, 0)),
   );
 
@@ -81,6 +100,31 @@ export function renderMetrics(container, metrics, { graphName }) {
       + `${metrics.wall_time.toFixed(3)}s · source/sink energy ${number(metrics.special_energy, 1)} `
       + '(excluded above)',
   }));
+
+  if (sinks.length) {
+    const perSink = el('div', { class: 'section' });
+    perSink.append(el('span', { class: 'panel-label', text: 'Per sink' }));
+    sinks.forEach((sink) => {
+      const rate = (metrics.per_sink_throughput || {})[sink.id] ?? 0;
+      const row = el('div', { class: 'sink-row' });
+      row.append(
+        el('b', { text: sink.name }),
+        el('span', {
+          class: 'sink-figures',
+          text: `${number(rate, 5)} tok/cyc · ${number(sink.tokens_in, 0)} tokens`,
+        }),
+      );
+      perSink.append(row);
+    });
+    if (sinks.length > 1) {
+      perSink.append(el('p', {
+        class: 'hint',
+        text: 'The headline throughput is the sum of these — a raw token count, so '
+          + 'it only means something when every sink counts the same kind of token.',
+      }));
+    }
+    parts.push(perSink);
+  }
 
   const list = el('div', { class: 'section' });
   list.append(el('span', { class: 'panel-label', text: 'Per actor' }));
@@ -110,7 +154,13 @@ export function renderMetrics(container, metrics, { graphName }) {
         }));
       }
     });
-    row.append(head, sub, bar);
+    const ratios = el('span', {
+      class: 'actor-metric-ratios',
+      title: 'Sleeping cycles per idle cycle, and wakeup transitions per firing',
+      text: `sleep/idle ${ratioText(actor.sleep_idle_ratio, 3)} · `
+        + `wakeups/firings ${number(actor.wakeup_firing_ratio, 3)}`,
+    });
+    row.append(head, sub, bar, ratios);
     list.append(row);
   });
   parts.push(list);

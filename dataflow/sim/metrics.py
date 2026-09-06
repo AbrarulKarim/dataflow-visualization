@@ -9,6 +9,25 @@ from ..model.actor import ActorKind, ActorState
 from .core import SimulationCore
 
 
+def _json_safe(value: float) -> float | str:
+    """Sanitise a float that may be infinite for JSON transport.
+
+    JSON's grammar has no literal for infinity. Python's stdlib ``json`` module
+    will still happily *emit* the bare token ``Infinity`` -- it just isn't valid
+    JSON -- and every strict parser rejects it outright, including the
+    browser's own ``JSON.parse``: a single infinite value anywhere in a
+    response would make the whole payload unparseable. Represented as the
+    string ``"Infinity"`` instead, it round-trips through JSON safely and is
+    unambiguous; the display code on the JS side checks for exactly this
+    sentinel and renders it as "∞".
+    """
+    if value == float("inf"):
+        return "Infinity"
+    if value == float("-inf"):
+        return "-Infinity"
+    return value
+
+
 @dataclass
 class ActorMetrics:
     id: str
@@ -16,12 +35,15 @@ class ActorMetrics:
     kind: str
     kind_label: str
     firings: int
+    wakeups: int
     energy: float
     avg_power: float
     state_cycles: dict[str, int]
     tokens_in: int
     tokens_out: int
     utilization: float  # fraction of cycles spent executing
+    sleep_idle_ratio: float  # sleeping cycles / idle cycles
+    wakeup_firing_ratio: float  # wakeup transitions / firings
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -30,12 +52,15 @@ class ActorMetrics:
             "kind": self.kind,
             "kind_label": self.kind_label,
             "firings": self.firings,
+            "wakeups": self.wakeups,
             "energy": self.energy,
             "avg_power": self.avg_power,
             "state_cycles": self.state_cycles,
             "tokens_in": self.tokens_in,
             "tokens_out": self.tokens_out,
             "utilization": self.utilization,
+            "sleep_idle_ratio": _json_safe(self.sleep_idle_ratio),
+            "wakeup_firing_ratio": self.wakeup_firing_ratio,
         }
 
 
@@ -115,12 +140,15 @@ def collect(core: SimulationCore, cycles: int, engine: str, wall_time: float = 0
         # Integrate energy once, in a fixed state order, so the result does not
         # depend on how the engine chunked time.
         energy = sum(rt.actor.power.of(s) * rt.state_cycles[s] for s in ActorState)
+        idle_cycles = rt.state_cycles[ActorState.IDLE]
+        sleeping_cycles = rt.state_cycles[ActorState.SLEEPING]
         metrics = ActorMetrics(
             id=rt.id,
             name=rt.actor.name,
             kind=rt.actor.kind.value,
             kind_label=rt.actor.kind.label,
             firings=rt.firings,
+            wakeups=rt.wakeups,
             energy=energy,
             avg_power=energy / cycles if cycles else 0.0,
             state_cycles=state_cycles,
@@ -128,6 +156,18 @@ def collect(core: SimulationCore, cycles: int, engine: str, wall_time: float = 0
             tokens_out=rt.tokens_out,
             utilization=(rt.state_cycles[ActorState.EXECUTING] / cycles)
             if cycles else 0.0,
+            # A genuinely undefined 0/0 (never idle, never asleep either) reads
+            # as 0; but 0 idle cycles with real sleeping time is not undefined
+            # -- sleeping is infinitely more common than idling, e.g. an
+            # `immediate` policy, which decides to sleep within the very cycle
+            # it goes idle and so is never charged any idle time at all -- so
+            # that case is a genuine (positive) infinity, not a fallback. See
+            # `_json_safe` for how this survives JSON transport.
+            sleep_idle_ratio=(
+                sleeping_cycles / idle_cycles if idle_cycles
+                else (float("inf") if sleeping_cycles else 0.0)
+            ),
+            wakeup_firing_ratio=rt.wakeups / rt.firings if rt.firings else 0.0,
         )
         actors.append(metrics)
         if rt.actor.is_special:

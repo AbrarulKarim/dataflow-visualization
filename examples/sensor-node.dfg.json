@@ -1,0 +1,258 @@
+{
+  "version": 1,
+  "name": "sensor-node",
+  "actors": [
+    {
+      "id": "event",
+      "name": "event",
+      "kind": "source",
+      "phases": 1,
+      "position": [
+        80,
+        220
+      ],
+      "power": {
+        "exec_power": 0.2,
+        "idle_power": 0.05,
+        "sleep_power": 0.02,
+        "shutdown_power": 0.5,
+        "wakeup_power": 0.8
+      },
+      "timing": {
+        "exec_time": 2,
+        "sleep_delay": 2,
+        "wakeup_delay": 3
+      },
+      "sleep_policy": {
+        "kind": "never",
+        "timeout": 0
+      },
+      "distribution": {
+        "kind": "exponential",
+        "mean": 4000,
+        "stddev": 0.0,
+        "low": 1.0,
+        "high": 1.0,
+        "expression": ""
+      }
+    },
+    {
+      "id": "adc",
+      "name": "adc",
+      "kind": "static_rate",
+      "phases": 1,
+      "position": [
+        300,
+        220
+      ],
+      "power": {
+        "exec_power": 0.6,
+        "idle_power": 0.25,
+        "sleep_power": 0.01,
+        "shutdown_power": 0.5,
+        "wakeup_power": 0.8
+      },
+      "timing": {
+        "exec_time": 12,
+        "sleep_delay": 3,
+        "wakeup_delay": 8
+      },
+      "sleep_policy": {
+        "kind": "immediate",
+        "timeout": 0
+      }
+    },
+    {
+      "id": "fir_filter",
+      "name": "fir_filter",
+      "kind": "static_rate",
+      "phases": 1,
+      "position": [
+        520,
+        220
+      ],
+      "power": {
+        "exec_power": 1.4,
+        "idle_power": 0.45,
+        "sleep_power": 0.02,
+        "shutdown_power": 0.5,
+        "wakeup_power": 0.8
+      },
+      "timing": {
+        "exec_time": 60,
+        "sleep_delay": 6,
+        "wakeup_delay": 18
+      },
+      "sleep_policy": {
+        "kind": "timeout",
+        "timeout": 200
+      }
+    },
+    {
+      "id": "features",
+      "name": "features",
+      "kind": "static_rate",
+      "phases": 1,
+      "position": [
+        740,
+        220
+      ],
+      "power": {
+        "exec_power": 1.7,
+        "idle_power": 0.5,
+        "sleep_power": 0.02,
+        "shutdown_power": 0.5,
+        "wakeup_power": 0.8
+      },
+      "timing": {
+        "exec_time": 90,
+        "sleep_delay": 6,
+        "wakeup_delay": 20
+      },
+      "sleep_policy": {
+        "kind": "timeout",
+        "timeout": 120
+      }
+    },
+    {
+      "id": "classify",
+      "name": "classify",
+      "kind": "static_rate",
+      "phases": 1,
+      "position": [
+        960,
+        220
+      ],
+      "power": {
+        "exec_power": 3.2,
+        "idle_power": 0.9,
+        "sleep_power": 0.03,
+        "shutdown_power": 0.5,
+        "wakeup_power": 0.8
+      },
+      "timing": {
+        "exec_time": 240,
+        "sleep_delay": 10,
+        "wakeup_delay": 45
+      },
+      "sleep_policy": {
+        "kind": "immediate",
+        "timeout": 0
+      }
+    },
+    {
+      "id": "radio_tx",
+      "name": "radio_tx",
+      "kind": "static_rate",
+      "phases": 1,
+      "position": [
+        1180,
+        220
+      ],
+      "power": {
+        "exec_power": 9.0,
+        "idle_power": 2.4,
+        "sleep_power": 0.05,
+        "shutdown_power": 0.5,
+        "wakeup_power": 0.8
+      },
+      "timing": {
+        "exec_time": 150,
+        "sleep_delay": 40,
+        "wakeup_delay": 400
+      },
+      "sleep_policy": {
+        "kind": "immediate",
+        "timeout": 0
+      }
+    },
+    {
+      "id": "gateway",
+      "name": "gateway",
+      "kind": "sink",
+      "phases": 1,
+      "position": [
+        1400,
+        220
+      ],
+      "power": {
+        "exec_power": 0.2,
+        "idle_power": 0.05,
+        "sleep_power": 0.02,
+        "shutdown_power": 0.5,
+        "wakeup_power": 0.8
+      },
+      "timing": {
+        "exec_time": 5,
+        "sleep_delay": 2,
+        "wakeup_delay": 3
+      },
+      "sleep_policy": {
+        "kind": "never",
+        "timeout": 0
+      }
+    }
+  ],
+  "channels": [
+    {
+      "id": "ch1",
+      "name": "",
+      "src": "event",
+      "dst": "adc",
+      "capacity": 4,
+      "initial_tokens": 0,
+      "production_rate": 1,
+      "consumption_rate": 1
+    },
+    {
+      "id": "ch2",
+      "name": "",
+      "src": "adc",
+      "dst": "fir_filter",
+      "capacity": 4,
+      "initial_tokens": 0,
+      "production_rate": 1,
+      "consumption_rate": 1
+    },
+    {
+      "id": "ch3",
+      "name": "",
+      "src": "fir_filter",
+      "dst": "features",
+      "capacity": 4,
+      "initial_tokens": 0,
+      "production_rate": 1,
+      "consumption_rate": 1
+    },
+    {
+      "id": "ch4",
+      "name": "",
+      "src": "features",
+      "dst": "classify",
+      "capacity": 4,
+      "initial_tokens": 0,
+      "production_rate": 1,
+      "consumption_rate": 1
+    },
+    {
+      "id": "ch5",
+      "name": "",
+      "src": "classify",
+      "dst": "radio_tx",
+      "capacity": 4,
+      "initial_tokens": 0,
+      "production_rate": 1,
+      "consumption_rate": 1
+    },
+    {
+      "id": "ch6",
+      "name": "",
+      "src": "radio_tx",
+      "dst": "gateway",
+      "capacity": 4,
+      "initial_tokens": 0,
+      "production_rate": 1,
+      "consumption_rate": 1
+    }
+  ]
+}

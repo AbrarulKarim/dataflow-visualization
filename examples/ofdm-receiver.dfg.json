@@ -1,0 +1,412 @@
+{
+  "version": 1,
+  "name": "ofdm-receiver",
+  "actors": [
+    {
+      "id": "rf_adc",
+      "name": "rf_adc",
+      "kind": "source",
+      "phases": 1,
+      "position": [
+        80,
+        180
+      ],
+      "power": {
+        "exec_power": 0.9,
+        "idle_power": 0.5,
+        "sleep_power": 0.02,
+        "shutdown_power": 0.5,
+        "wakeup_power": 0.8
+      },
+      "timing": {
+        "exec_time": 4,
+        "sleep_delay": 2,
+        "wakeup_delay": 3
+      },
+      "sleep_policy": {
+        "kind": "never",
+        "timeout": 0
+      },
+      "distribution": {
+        "kind": "constant",
+        "mean": 80,
+        "stddev": 0.0,
+        "low": 1.0,
+        "high": 1.0,
+        "expression": ""
+      }
+    },
+    {
+      "id": "sync",
+      "name": "sync",
+      "kind": "static_rate",
+      "phases": 1,
+      "position": [
+        300,
+        180
+      ],
+      "power": {
+        "exec_power": 1.2,
+        "idle_power": 0.45,
+        "sleep_power": 0.02,
+        "shutdown_power": 0.5,
+        "wakeup_power": 0.8
+      },
+      "timing": {
+        "exec_time": 20,
+        "sleep_delay": 2,
+        "wakeup_delay": 3
+      },
+      "sleep_policy": {
+        "kind": "never",
+        "timeout": 0
+      }
+    },
+    {
+      "id": "remove_cp",
+      "name": "remove_cp",
+      "kind": "static_rate",
+      "phases": 1,
+      "position": [
+        520,
+        180
+      ],
+      "power": {
+        "exec_power": 0.5,
+        "idle_power": 0.2,
+        "sleep_power": 0.02,
+        "shutdown_power": 0.5,
+        "wakeup_power": 0.8
+      },
+      "timing": {
+        "exec_time": 8,
+        "sleep_delay": 2,
+        "wakeup_delay": 3
+      },
+      "sleep_policy": {
+        "kind": "timeout",
+        "timeout": 40
+      }
+    },
+    {
+      "id": "fft64",
+      "name": "fft64",
+      "kind": "static_rate",
+      "phases": 1,
+      "position": [
+        740,
+        180
+      ],
+      "power": {
+        "exec_power": 2.2,
+        "idle_power": 0.6,
+        "sleep_power": 0.02,
+        "shutdown_power": 0.5,
+        "wakeup_power": 0.8
+      },
+      "timing": {
+        "exec_time": 40,
+        "sleep_delay": 5,
+        "wakeup_delay": 12
+      },
+      "sleep_policy": {
+        "kind": "timeout",
+        "timeout": 30
+      }
+    },
+    {
+      "id": "equalize",
+      "name": "equalize",
+      "kind": "static_rate",
+      "phases": 1,
+      "position": [
+        960,
+        180
+      ],
+      "power": {
+        "exec_power": 1.1,
+        "idle_power": 0.4,
+        "sleep_power": 0.02,
+        "shutdown_power": 0.5,
+        "wakeup_power": 0.8
+      },
+      "timing": {
+        "exec_time": 16,
+        "sleep_delay": 2,
+        "wakeup_delay": 3
+      },
+      "sleep_policy": {
+        "kind": "timeout",
+        "timeout": 40
+      }
+    },
+    {
+      "id": "chan_est",
+      "name": "chan_est",
+      "kind": "static_rate",
+      "phases": 1,
+      "position": [
+        1180,
+        60
+      ],
+      "power": {
+        "exec_power": 0.8,
+        "idle_power": 0.3,
+        "sleep_power": 0.02,
+        "shutdown_power": 0.5,
+        "wakeup_power": 0.8
+      },
+      "timing": {
+        "exec_time": 22,
+        "sleep_delay": 2,
+        "wakeup_delay": 3
+      },
+      "sleep_policy": {
+        "kind": "timeout",
+        "timeout": 60
+      }
+    },
+    {
+      "id": "demap",
+      "name": "demap",
+      "kind": "static_rate",
+      "phases": 1,
+      "position": [
+        1180,
+        400
+      ],
+      "power": {
+        "exec_power": 0.9,
+        "idle_power": 0.3,
+        "sleep_power": 0.02,
+        "shutdown_power": 0.5,
+        "wakeup_power": 0.8
+      },
+      "timing": {
+        "exec_time": 24,
+        "sleep_delay": 2,
+        "wakeup_delay": 3
+      },
+      "sleep_policy": {
+        "kind": "timeout",
+        "timeout": 40
+      }
+    },
+    {
+      "id": "deinterleave",
+      "name": "deinterleave",
+      "kind": "static_rate",
+      "phases": 1,
+      "position": [
+        960,
+        400
+      ],
+      "power": {
+        "exec_power": 0.4,
+        "idle_power": 0.15,
+        "sleep_power": 0.02,
+        "shutdown_power": 0.5,
+        "wakeup_power": 0.8
+      },
+      "timing": {
+        "exec_time": 12,
+        "sleep_delay": 4,
+        "wakeup_delay": 10
+      },
+      "sleep_policy": {
+        "kind": "immediate",
+        "timeout": 0
+      }
+    },
+    {
+      "id": "viterbi",
+      "name": "viterbi",
+      "kind": "static_rate",
+      "phases": 1,
+      "position": [
+        740,
+        400
+      ],
+      "power": {
+        "exec_power": 2.8,
+        "idle_power": 0.8,
+        "sleep_power": 0.02,
+        "shutdown_power": 0.5,
+        "wakeup_power": 0.8
+      },
+      "timing": {
+        "exec_time": 70,
+        "sleep_delay": 10,
+        "wakeup_delay": 25
+      },
+      "sleep_policy": {
+        "kind": "timeout",
+        "timeout": 25
+      }
+    },
+    {
+      "id": "descramble",
+      "name": "descramble",
+      "kind": "static_rate",
+      "phases": 1,
+      "position": [
+        520,
+        400
+      ],
+      "power": {
+        "exec_power": 0.3,
+        "idle_power": 0.12,
+        "sleep_power": 0.02,
+        "shutdown_power": 0.5,
+        "wakeup_power": 0.8
+      },
+      "timing": {
+        "exec_time": 6,
+        "sleep_delay": 2,
+        "wakeup_delay": 3
+      },
+      "sleep_policy": {
+        "kind": "immediate",
+        "timeout": 0
+      }
+    },
+    {
+      "id": "mac_out",
+      "name": "mac_out",
+      "kind": "sink",
+      "phases": 1,
+      "position": [
+        300,
+        400
+      ],
+      "power": {
+        "exec_power": 0.3,
+        "idle_power": 0.12,
+        "sleep_power": 0.02,
+        "shutdown_power": 0.5,
+        "wakeup_power": 0.8
+      },
+      "timing": {
+        "exec_time": 4,
+        "sleep_delay": 2,
+        "wakeup_delay": 3
+      },
+      "sleep_policy": {
+        "kind": "never",
+        "timeout": 0
+      }
+    }
+  ],
+  "channels": [
+    {
+      "id": "ch1",
+      "name": "",
+      "src": "rf_adc",
+      "dst": "sync",
+      "capacity": 240,
+      "initial_tokens": 0,
+      "production_rate": 80,
+      "consumption_rate": 80
+    },
+    {
+      "id": "ch2",
+      "name": "",
+      "src": "sync",
+      "dst": "remove_cp",
+      "capacity": 240,
+      "initial_tokens": 0,
+      "production_rate": 80,
+      "consumption_rate": 80
+    },
+    {
+      "id": "ch3",
+      "name": "",
+      "src": "remove_cp",
+      "dst": "fft64",
+      "capacity": 192,
+      "initial_tokens": 0,
+      "production_rate": 64,
+      "consumption_rate": 64
+    },
+    {
+      "id": "ch4",
+      "name": "",
+      "src": "fft64",
+      "dst": "equalize",
+      "capacity": 192,
+      "initial_tokens": 0,
+      "production_rate": 64,
+      "consumption_rate": 64
+    },
+    {
+      "id": "ch5",
+      "name": "",
+      "src": "equalize",
+      "dst": "demap",
+      "capacity": 144,
+      "initial_tokens": 0,
+      "production_rate": 48,
+      "consumption_rate": 48
+    },
+    {
+      "id": "ch6",
+      "name": "",
+      "src": "demap",
+      "dst": "deinterleave",
+      "capacity": 576,
+      "initial_tokens": 0,
+      "production_rate": 192,
+      "consumption_rate": 192
+    },
+    {
+      "id": "ch7",
+      "name": "",
+      "src": "deinterleave",
+      "dst": "viterbi",
+      "capacity": 576,
+      "initial_tokens": 0,
+      "production_rate": 192,
+      "consumption_rate": 192
+    },
+    {
+      "id": "ch8",
+      "name": "",
+      "src": "viterbi",
+      "dst": "descramble",
+      "capacity": 288,
+      "initial_tokens": 0,
+      "production_rate": 96,
+      "consumption_rate": 96
+    },
+    {
+      "id": "ch9",
+      "name": "",
+      "src": "descramble",
+      "dst": "mac_out",
+      "capacity": 288,
+      "initial_tokens": 0,
+      "production_rate": 96,
+      "consumption_rate": 96
+    },
+    {
+      "id": "ch10",
+      "name": "",
+      "src": "equalize",
+      "dst": "chan_est",
+      "capacity": 12,
+      "initial_tokens": 0,
+      "production_rate": 4,
+      "consumption_rate": 4
+    },
+    {
+      "id": "chan_corr",
+      "name": "",
+      "src": "chan_est",
+      "dst": "equalize",
+      "capacity": 3,
+      "initial_tokens": 1,
+      "production_rate": 1,
+      "consumption_rate": 1
+    }
+  ]
+}

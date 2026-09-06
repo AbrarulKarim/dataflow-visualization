@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 import random
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from enum import Enum
 
@@ -126,6 +127,23 @@ class TimingModel:
 # --------------------------------------------------------------------------- #
 
 
+@dataclass(frozen=True)
+class AdaptiveStrategyInfo:
+    label: str
+    summary: str
+
+
+#: Sub-choices for ``SleepPolicy.kind == "adaptive"``. Each strategy computes
+#: its own timeout from an actor's fireability history; more strategies land
+#: here over time, alongside whatever parameters they need on ``SleepPolicy``.
+ADAPTIVE_STRATEGY_INFO: dict[str, AdaptiveStrategyInfo] = {
+    "weighted_moving_average": AdaptiveStrategyInfo(
+        "Weighted moving average",
+        "delay = X × execution time / (average of the last N fireability gaps)",
+    ),
+}
+
+
 @dataclass
 class SleepPolicy:
     """Decides when a non-fireable idle actor starts shutting down.
@@ -134,22 +152,62 @@ class SleepPolicy:
     idle-and-not-fireable; it is 0 on the very cycle it becomes non-fireable, and
     is reset whenever the actor becomes fireable again. Once shutdown begins the
     decision is irrevocable -- see ``sim.core`` for the non-interruptible rule.
+
+    ``adaptive_strategy``, ``wma_factor`` and ``wma_window`` are only meaningful
+    when ``kind == "adaptive"``; the other kinds ignore them. Kept flat rather
+    than nested (matching :class:`Distribution` below) so the JSON schema and
+    the builder API stay simple -- a second strategy would add its own
+    similarly-prefixed fields rather than a variant type.
     """
 
     kind: str = "never"
     timeout: int = 0
+    adaptive_strategy: str = "weighted_moving_average"
+    wma_factor: float = 50.0  # X
+    wma_window: int = 5  # N -- how many gaps the average is taken over
 
-    def should_sleep(self, idle_cycles: int, history: list[int] | None = None) -> bool:
+    def __post_init__(self) -> None:
+        if self.wma_window < 1:
+            raise ValueError("adaptive window (N) must be >= 1")
+        if self.wma_factor < 0:
+            raise ValueError("adaptive factor (X) must be >= 0")
+
+    def should_sleep(
+        self, idle_cycles: int, fireable_gaps: Sequence[int] = (), exec_time: int = 1,
+    ) -> bool:
         if self.kind == "never":
             return False
         if self.kind == "immediate":
             return True
-        if self.kind == "timeout":
-            return idle_cycles >= self.timeout
-        if self.kind == "adaptive":
-            # Placeholder: behaves as a timeout until the adaptive strategies land.
-            return idle_cycles >= self.timeout
+        if self.kind in ("timeout", "adaptive"):
+            return idle_cycles >= self.effective_timeout(fireable_gaps, exec_time)
         raise ValueError(f"unknown sleep policy {self.kind!r}")
+
+    def effective_timeout(self, fireable_gaps: Sequence[int] = (), exec_time: int = 1) -> float:
+        """The idle-cycle threshold ``timeout`` and ``adaptive`` decide against.
+
+        For ``timeout`` this is just the configured value. For ``adaptive`` it is
+        recomputed from the actor's own recent history every time it is asked --
+        the event engine relies on that to predict the same deadline the tick
+        engine would reach by re-evaluating every cycle (see
+        ``SimulationCore.next_event_time``).
+        """
+        if self.kind != "adaptive":
+            return self.timeout
+        if self.adaptive_strategy == "weighted_moving_average":
+            if not fireable_gaps:
+                # No history yet: fall back to the configured bootstrap timeout
+                # rather than guessing, which is also what the pre-adaptive
+                # placeholder did (it just used `timeout` unconditionally).
+                return float(self.timeout)
+            # wma_window (N) bounds how many gaps are averaged -- see
+            # ActorRuntime.fireable_gaps -- but does not itself appear in the
+            # formula; wma_factor (X) is the free numerator parameter.
+            avg_gap = sum(fireable_gaps) / len(fireable_gaps)
+            if avg_gap <= 0:
+                return float(self.timeout)
+            return (self.wma_factor * exec_time) / avg_gap
+        raise ValueError(f"unknown adaptive strategy {self.adaptive_strategy!r}")
 
     @property
     def sleeps(self) -> bool:

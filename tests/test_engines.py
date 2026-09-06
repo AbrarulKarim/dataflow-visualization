@@ -10,7 +10,7 @@ import pytest
 from dataflow.model import GraphBuilder
 from dataflow.sim import Simulator, TraceConfig
 
-SLEEP_KINDS = ("never", "immediate", "timeout")
+SLEEP_KINDS = ("never", "immediate", "timeout", "adaptive")
 DISTRIBUTIONS = ("constant", "uniform", "gaussian", "exponential")
 
 
@@ -39,6 +39,9 @@ def random_graph(rng: random.Random) -> object:
             exec_time=rng.randint(1, 5),
             sleep=rng.choice(SLEEP_KINDS),
             timeout=rng.randint(0, 8),
+            # Only used when sleep == "adaptive"; harmless to pass otherwise.
+            wma_factor=rng.uniform(1, 40),
+            wma_window=rng.randint(1, 6),
             sleep_delay=rng.randint(0, 4),
             wakeup_delay=rng.randint(0, 5),
             exec_power=rng.uniform(0.5, 2.0),

@@ -1,0 +1,268 @@
+{
+  "version": 1,
+  "name": "h264-decoder",
+  "actors": [
+    {
+      "id": "bitstream",
+      "name": "bitstream",
+      "kind": "source",
+      "phases": 1,
+      "position": [
+        80,
+        260
+      ],
+      "power": {
+        "exec_power": 0.5,
+        "idle_power": 0.2,
+        "sleep_power": 0.02,
+        "shutdown_power": 0.5,
+        "wakeup_power": 0.8
+      },
+      "timing": {
+        "exec_time": 6,
+        "sleep_delay": 2,
+        "wakeup_delay": 3
+      },
+      "sleep_policy": {
+        "kind": "never",
+        "timeout": 0
+      },
+      "distribution": {
+        "kind": "gaussian",
+        "mean": 1200,
+        "stddev": 90,
+        "low": 1.0,
+        "high": 1.0,
+        "expression": ""
+      }
+    },
+    {
+      "id": "nal_parse",
+      "name": "nal_parse",
+      "kind": "static_rate",
+      "phases": 1,
+      "position": [
+        300,
+        260
+      ],
+      "power": {
+        "exec_power": 0.9,
+        "idle_power": 0.35,
+        "sleep_power": 0.02,
+        "shutdown_power": 0.5,
+        "wakeup_power": 0.8
+      },
+      "timing": {
+        "exec_time": 40,
+        "sleep_delay": 2,
+        "wakeup_delay": 3
+      },
+      "sleep_policy": {
+        "kind": "timeout",
+        "timeout": 150
+      }
+    },
+    {
+      "id": "cabac",
+      "name": "cabac",
+      "kind": "static_rate",
+      "phases": 1,
+      "position": [
+        520,
+        260
+      ],
+      "power": {
+        "exec_power": 1.8,
+        "idle_power": 0.6,
+        "sleep_power": 0.02,
+        "shutdown_power": 0.5,
+        "wakeup_power": 0.8
+      },
+      "timing": {
+        "exec_time": 30,
+        "sleep_delay": 2,
+        "wakeup_delay": 3
+      },
+      "sleep_policy": {
+        "kind": "never",
+        "timeout": 0
+      }
+    },
+    {
+      "id": "iq_idct",
+      "name": "iq_idct",
+      "kind": "static_rate",
+      "phases": 1,
+      "position": [
+        740,
+        260
+      ],
+      "power": {
+        "exec_power": 1.3,
+        "idle_power": 0.4,
+        "sleep_power": 0.02,
+        "shutdown_power": 0.5,
+        "wakeup_power": 0.8
+      },
+      "timing": {
+        "exec_time": 25,
+        "sleep_delay": 2,
+        "wakeup_delay": 3
+      },
+      "sleep_policy": {
+        "kind": "timeout",
+        "timeout": 60
+      }
+    },
+    {
+      "id": "motion_comp",
+      "name": "motion_comp",
+      "kind": "static_rate",
+      "phases": 1,
+      "position": [
+        960,
+        260
+      ],
+      "power": {
+        "exec_power": 1.6,
+        "idle_power": 0.5,
+        "sleep_power": 0.02,
+        "shutdown_power": 0.5,
+        "wakeup_power": 0.8
+      },
+      "timing": {
+        "exec_time": 35,
+        "sleep_delay": 8,
+        "wakeup_delay": 20
+      },
+      "sleep_policy": {
+        "kind": "timeout",
+        "timeout": 90
+      }
+    },
+    {
+      "id": "deblock",
+      "name": "deblock",
+      "kind": "static_rate",
+      "phases": 1,
+      "position": [
+        1180,
+        260
+      ],
+      "power": {
+        "exec_power": 1.1,
+        "idle_power": 0.35,
+        "sleep_power": 0.02,
+        "shutdown_power": 0.5,
+        "wakeup_power": 0.8
+      },
+      "timing": {
+        "exec_time": 20,
+        "sleep_delay": 6,
+        "wakeup_delay": 14
+      },
+      "sleep_policy": {
+        "kind": "immediate",
+        "timeout": 0
+      }
+    },
+    {
+      "id": "display",
+      "name": "display",
+      "kind": "sink",
+      "phases": 1,
+      "position": [
+        1400,
+        260
+      ],
+      "power": {
+        "exec_power": 0.4,
+        "idle_power": 0.15,
+        "sleep_power": 0.02,
+        "shutdown_power": 0.5,
+        "wakeup_power": 0.8
+      },
+      "timing": {
+        "exec_time": 8,
+        "sleep_delay": 2,
+        "wakeup_delay": 3
+      },
+      "sleep_policy": {
+        "kind": "never",
+        "timeout": 0
+      }
+    }
+  ],
+  "channels": [
+    {
+      "id": "ch1",
+      "name": "",
+      "src": "bitstream",
+      "dst": "nal_parse",
+      "capacity": 3,
+      "initial_tokens": 0,
+      "production_rate": 1,
+      "consumption_rate": 1
+    },
+    {
+      "id": "ch2",
+      "name": "",
+      "src": "nal_parse",
+      "dst": "cabac",
+      "capacity": 18,
+      "initial_tokens": 0,
+      "production_rate": 9,
+      "consumption_rate": 1
+    },
+    {
+      "id": "ch3",
+      "name": "",
+      "src": "cabac",
+      "dst": "iq_idct",
+      "capacity": 12,
+      "initial_tokens": 0,
+      "production_rate": 1,
+      "consumption_rate": 1
+    },
+    {
+      "id": "ch4",
+      "name": "",
+      "src": "iq_idct",
+      "dst": "motion_comp",
+      "capacity": 12,
+      "initial_tokens": 0,
+      "production_rate": 1,
+      "consumption_rate": 1
+    },
+    {
+      "id": "ch5",
+      "name": "",
+      "src": "motion_comp",
+      "dst": "deblock",
+      "capacity": 12,
+      "initial_tokens": 0,
+      "production_rate": 1,
+      "consumption_rate": 9
+    },
+    {
+      "id": "ch6",
+      "name": "",
+      "src": "deblock",
+      "dst": "display",
+      "capacity": 3,
+      "initial_tokens": 0,
+      "production_rate": 1,
+      "consumption_rate": 1
+    },
+    {
+      "id": "reference",
+      "name": "",
+      "src": "deblock",
+      "dst": "motion_comp",
+      "capacity": 18,
+      "initial_tokens": 9,
+      "production_rate": 9,
+      "consumption_rate": 1
+    }
+  ]
+}

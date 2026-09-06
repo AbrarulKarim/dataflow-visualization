@@ -258,6 +258,115 @@ def test_immediate_policy_sleeps_more_than_a_timeout_policy(mode):
     assert eager_a.state_cycles["sleeping"] > lazy_a.state_cycles["sleeping"]
 
 
+def _idle_to_shutdown_gaps(trace, actor_id):
+    """Every observed ``idle -> shutdown`` duration, in cycles, for one actor."""
+    series = trace["actors"][actor_id]
+    gaps = []
+    for (t0, s0), (t1, s1) in zip(series, series[1:]):
+        if s0 == "idle" and s1 == "shutdown":
+            gaps.append(t1 - t0)
+    return gaps
+
+
+@pytest.mark.parametrize("mode", MODES)
+def test_adaptive_bootstraps_from_the_configured_timeout(mode):
+    """No fireability history yet -- the very first idle stretch of the run --
+    falls back to the plain ``timeout`` field, same as the pre-adaptive default."""
+    graph = sleeper_graph(sleep="adaptive", timeout=5, interval=200)
+    trace = simulate(graph, 20, mode=mode).trace
+    assert _idle_to_shutdown_gaps(trace, "a") == [5]
+
+
+@pytest.mark.parametrize("mode", MODES)
+def test_adaptive_timeout_matches_the_weighted_moving_average_formula(mode):
+    """delay = X * exec_time / (average of the last N fireability gaps), end to
+    end.
+
+    A steady 40-cycle source interval makes the average gap converge to 40, so
+    the threshold settles at ceil(100 * 2 / 40) = 5 idle cycles -- this also
+    exercises the event engine's deadline prediction, which has to recompute
+    the same fractional threshold and round it the same way the tick engine's
+    cycle-by-cycle check would.
+    """
+    b = GraphBuilder()
+    b.source("src", interval=40, exec_time=1)
+    b.actor("a", exec_time=2, sleep="adaptive", wma_factor=100, wma_window=4,
+            sleep_delay=2, wakeup_delay=3)
+    b.sink("snk", exec_time=1)
+    b.connect("src", "a", capacity=4, channel_id="in")
+    b.connect("a", "snk", capacity=4)
+    trace = simulate(b.build(), 400, mode=mode).trace
+
+    # The very first shutdown happens inside cycle 0's own boundary (idle_since
+    # starts at 0 and the bootstrap timeout is 0), so it has no preceding
+    # 'idle' entry in the compressed trace to pair up -- every gap this helper
+    # *does* find is a real, fully-informed adaptive decision, and once the
+    # window has filled they should all match the formula exactly.
+    gaps = _idle_to_shutdown_gaps(trace, "a")
+    assert gaps == [5] * len(gaps)
+    assert len(gaps) >= 5
+
+
+@pytest.mark.parametrize("mode", MODES)
+def test_adaptive_sleeps_less_when_arrivals_are_frequent(mode):
+    """Frequent arrivals push the computed threshold (X * exec_time / a small
+    average gap) above the actual idle time between them, so the actor never
+    earns enough idle cycles to cross it and stops sleeping again after the
+    bootstrap. Rare arrivals leave it idle long enough to cross a much smaller
+    threshold repeatedly. Same X, N and exec_time throughout -- only the
+    source interval differs."""
+    def sleeping_cycles(interval):
+        b = GraphBuilder()
+        b.source("src", interval=interval, exec_time=1)
+        b.actor("a", exec_time=3, sleep="adaptive", wma_factor=16, wma_window=10,
+                sleep_delay=1, wakeup_delay=1)
+        b.sink("snk", exec_time=1)
+        b.connect("src", "a", capacity=10, channel_id="in")
+        b.connect("a", "snk", capacity=10)
+        result = simulate(b.build(), 2000, mode=mode)
+        a = next(m for m in result.metrics.actors if m.id == "a")
+        return a.state_cycles["sleeping"]
+
+    frequent, rare = sleeping_cycles(5), sleeping_cycles(80)
+    assert frequent < rare
+    # Frequent arrivals should keep it awake for virtually the whole run.
+    assert frequent < 20
+
+
+@pytest.mark.parametrize("mode", MODES)
+def test_adaptive_countdown_resets_like_a_plain_timeout(mode):
+    """Becoming fireable mid-countdown cancels the pending shutdown, the same
+    as it does for the `timeout` kind -- adaptive only changes the threshold,
+    not that basic cancellation rule."""
+    graph = sleeper_graph(sleep="adaptive", timeout=50, interval=3)
+    result = simulate(graph, 300, mode=mode)
+    a = next(m for m in result.metrics.actors if m.id == "a")
+    assert a.state_cycles["sleeping"] == 0
+    assert a.state_cycles["shutdown"] == 0
+    assert a.firings > 50
+
+
+def test_fireable_gap_history_is_bounded_to_the_window():
+    """A run long enough to accumulate thousands of gaps must not grow the
+    per-actor history past N -- the point of bounding it to the window in the
+    first place is to keep a long run's memory flat."""
+    from dataflow.sim.core import SimulationCore
+
+    b = GraphBuilder()
+    b.source("src", interval=3, exec_time=1)
+    b.actor("a", exec_time=1, sleep="adaptive", wma_window=4)
+    b.sink("snk", exec_time=1)
+    b.connect("src", "a", capacity=10)
+    b.connect("a", "snk", capacity=10)
+    graph = b.build()
+
+    core = SimulationCore(graph)
+    for t in range(20_000):
+        core.boundary(t)
+        core.charge(t + 1)
+    assert len(core.runtimes["a"].fireable_gaps) <= 4
+
+
 @pytest.mark.parametrize("mode", MODES)
 def test_zero_length_transitions_chain_within_one_boundary(mode):
     b = GraphBuilder()
@@ -306,6 +415,87 @@ def test_source_and_sink_energy_is_reported_separately(mode):
     assert result.metrics.special_energy == pytest.approx(
         metrics["src"].energy + metrics["snk"].energy
     )
+
+
+@pytest.mark.parametrize("mode", MODES)
+def test_sleep_idle_and_wakeup_firing_ratios_match_hand_computation(mode):
+    """Two metrics-panel figures: sleeping cycles per idle cycle, and wakeup
+    transitions per firing -- both derived, so checked against the same raw
+    counters they're built from rather than an independent expectation."""
+    graph = sleeper_graph(sleep="timeout", timeout=4, interval=40)
+    result = simulate(graph, 4000, mode=mode)
+    a = next(m for m in result.metrics.actors if m.id == "a")
+
+    assert a.wakeups == pytest.approx(a.firings, abs=2)
+    assert a.sleep_idle_ratio == pytest.approx(
+        a.state_cycles["sleeping"] / a.state_cycles["idle"]
+    )
+    assert a.wakeup_firing_ratio == pytest.approx(a.wakeups / a.firings)
+    # This actor spends far more time asleep than idle -- a `timeout` policy
+    # only stays idle for the countdown, not for the whole gap between arrivals.
+    assert a.sleep_idle_ratio > 5
+
+
+@pytest.mark.parametrize("mode", MODES)
+def test_wakeup_counts_once_even_with_a_zero_length_wakeup_delay(mode):
+    """A wakeup transition is counted the instant sleep ends, whether or not
+    the actor visibly passes through the WAKEUP state on the way -- see
+    `test_zero_length_transitions_chain_within_one_boundary` for the state
+    machine side of the same case."""
+    b = GraphBuilder()
+    b.source("src", interval=6, exec_time=1)
+    b.actor("a", exec_time=1, sleep="immediate", sleep_delay=0, wakeup_delay=0)
+    b.sink("snk")
+    b.connect("src", "a", channel_id="in")
+    b.connect("a", "snk")
+    result = simulate(b.build(), 200, mode=mode)
+    a = next(m for m in result.metrics.actors if m.id == "a")
+    assert a.state_cycles["wakeup"] == 0  # never visibly enters WAKEUP
+    # Every firing was still preceded by one wakeup; the run can end on a
+    # wakeup that has no matching firing yet, hence the +-1.
+    assert a.wakeups == pytest.approx(a.firings, abs=1)
+
+
+@pytest.mark.parametrize("mode", MODES)
+def test_ratio_metrics_are_zero_for_actors_that_never_sleep(mode):
+    """Sources, sinks, and any actor on the `never` policy: no wakeups, and an
+    idle-but-never-sleeping actor's ratio falls back to 0 rather than NaN."""
+    result = simulate(sleeper_graph(sleep="never", interval=40), 2000, mode=mode)
+    for actor_id in ("src", "snk", "a"):
+        m = next(x for x in result.metrics.actors if x.id == actor_id)
+        assert m.wakeups == 0
+        assert m.sleep_idle_ratio == 0.0
+        assert m.wakeup_firing_ratio == 0.0
+
+
+@pytest.mark.parametrize("mode", MODES)
+def test_sleep_idle_ratio_is_infinite_with_no_idle_time(mode):
+    """`immediate` never leaves an actor visibly idle for a whole charged cycle
+    (it decides to sleep within the same boundary it goes idle), so this
+    zero-denominator case is not a hypothetical -- every actor on this policy
+    hits it. Sleeping is not "undefined relative to idling" here, it is
+    infinitely more common than idling (there is none), so the ratio is a
+    genuine +inf rather than the 0 fallback used for an actual 0/0."""
+    result = simulate(sleeper_graph(sleep="immediate", interval=40), 4000, mode=mode)
+    a = next(m for m in result.metrics.actors if m.id == "a")
+    assert a.state_cycles["idle"] == 0
+    assert a.state_cycles["sleeping"] > 0
+    assert a.sleep_idle_ratio == float("inf")
+    # It still woke up once per firing -- that ratio is unaffected.
+    assert a.wakeup_firing_ratio == pytest.approx(1.0)
+
+
+@pytest.mark.parametrize("mode", MODES)
+def test_actor_metrics_to_dict_makes_infinity_json_safe(mode):
+    """The dataclass keeps a real ``float('inf')`` -- comparisons, `pytest.approx`
+    and any other Python-side use all work normally -- but `to_dict()` is the
+    boundary this crosses into JSON (the web API, `--json` on the CLI), where a
+    bare infinite float is not valid syntax and a strict parser -- unlike
+    Python's own lenient one -- would refuse the whole payload over it."""
+    result = simulate(sleeper_graph(sleep="immediate", interval=40), 4000, mode=mode)
+    a = next(m for m in result.metrics.actors if m.id == "a")
+    assert a.sleep_idle_ratio == float("inf")  # the live object: a real float
+    assert a.to_dict()["sleep_idle_ratio"] == "Infinity"  # the wire format: a string
 
 
 @pytest.mark.parametrize("mode", MODES)

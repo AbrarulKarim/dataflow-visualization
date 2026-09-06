@@ -1,0 +1,286 @@
+{
+  "version": 1,
+  "name": "turbo-decoder",
+  "actors": [
+    {
+      "id": "channel_llr",
+      "name": "channel_llr",
+      "kind": "source",
+      "phases": 1,
+      "position": [
+        80,
+        230
+      ],
+      "power": {
+        "exec_power": 0.8,
+        "idle_power": 0.3,
+        "sleep_power": 0.02,
+        "shutdown_power": 0.5,
+        "wakeup_power": 0.8
+      },
+      "timing": {
+        "exec_time": 25,
+        "sleep_delay": 2,
+        "wakeup_delay": 3
+      },
+      "sleep_policy": {
+        "kind": "never",
+        "timeout": 0
+      },
+      "distribution": {
+        "kind": "constant",
+        "mean": 900,
+        "stddev": 0.0,
+        "low": 1.0,
+        "high": 1.0,
+        "expression": ""
+      }
+    },
+    {
+      "id": "siso_a",
+      "name": "siso_a",
+      "kind": "phased_rate",
+      "phases": 8,
+      "position": [
+        340,
+        230
+      ],
+      "power": {
+        "exec_power": 3.0,
+        "idle_power": 0.8,
+        "sleep_power": 0.02,
+        "shutdown_power": 0.5,
+        "wakeup_power": 0.8
+      },
+      "timing": {
+        "exec_time": 40,
+        "sleep_delay": 8,
+        "wakeup_delay": 20
+      },
+      "sleep_policy": {
+        "kind": "timeout",
+        "timeout": 120
+      }
+    },
+    {
+      "id": "interleave",
+      "name": "interleave",
+      "kind": "static_rate",
+      "phases": 1,
+      "position": [
+        600,
+        110
+      ],
+      "power": {
+        "exec_power": 0.5,
+        "idle_power": 0.2,
+        "sleep_power": 0.02,
+        "shutdown_power": 0.5,
+        "wakeup_power": 0.8
+      },
+      "timing": {
+        "exec_time": 10,
+        "sleep_delay": 2,
+        "wakeup_delay": 3
+      },
+      "sleep_policy": {
+        "kind": "timeout",
+        "timeout": 120
+      }
+    },
+    {
+      "id": "siso_b",
+      "name": "siso_b",
+      "kind": "phased_rate",
+      "phases": 8,
+      "position": [
+        860,
+        230
+      ],
+      "power": {
+        "exec_power": 3.0,
+        "idle_power": 0.8,
+        "sleep_power": 0.02,
+        "shutdown_power": 0.5,
+        "wakeup_power": 0.8
+      },
+      "timing": {
+        "exec_time": 40,
+        "sleep_delay": 8,
+        "wakeup_delay": 20
+      },
+      "sleep_policy": {
+        "kind": "timeout",
+        "timeout": 120
+      }
+    },
+    {
+      "id": "deinterleave",
+      "name": "deinterleave",
+      "kind": "static_rate",
+      "phases": 1,
+      "position": [
+        600,
+        350
+      ],
+      "power": {
+        "exec_power": 0.5,
+        "idle_power": 0.2,
+        "sleep_power": 0.02,
+        "shutdown_power": 0.5,
+        "wakeup_power": 0.8
+      },
+      "timing": {
+        "exec_time": 10,
+        "sleep_delay": 2,
+        "wakeup_delay": 3
+      },
+      "sleep_policy": {
+        "kind": "timeout",
+        "timeout": 120
+      }
+    },
+    {
+      "id": "crc_check",
+      "name": "crc_check",
+      "kind": "static_rate",
+      "phases": 1,
+      "position": [
+        1120,
+        230
+      ],
+      "power": {
+        "exec_power": 0.6,
+        "idle_power": 0.25,
+        "sleep_power": 0.02,
+        "shutdown_power": 0.5,
+        "wakeup_power": 0.8
+      },
+      "timing": {
+        "exec_time": 18,
+        "sleep_delay": 4,
+        "wakeup_delay": 12
+      },
+      "sleep_policy": {
+        "kind": "immediate",
+        "timeout": 0
+      }
+    },
+    {
+      "id": "transport",
+      "name": "transport",
+      "kind": "sink",
+      "phases": 1,
+      "position": [
+        1340,
+        230
+      ],
+      "power": {
+        "exec_power": 0.3,
+        "idle_power": 0.12,
+        "sleep_power": 0.02,
+        "shutdown_power": 0.5,
+        "wakeup_power": 0.8
+      },
+      "timing": {
+        "exec_time": 8,
+        "sleep_delay": 2,
+        "wakeup_delay": 3
+      },
+      "sleep_policy": {
+        "kind": "never",
+        "timeout": 0
+      }
+    }
+  ],
+  "channels": [
+    {
+      "id": "ch1",
+      "name": "",
+      "src": "channel_llr",
+      "dst": "siso_a",
+      "capacity": 4,
+      "initial_tokens": 0,
+      "production_rate": 1,
+      "consumption_rate": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "id": "ch2",
+      "name": "",
+      "src": "siso_a",
+      "dst": "interleave",
+      "capacity": 4,
+      "initial_tokens": 0,
+      "production_rate": 1,
+      "consumption_rate": 1
+    },
+    {
+      "id": "ch3",
+      "name": "",
+      "src": "interleave",
+      "dst": "siso_b",
+      "capacity": 4,
+      "initial_tokens": 0,
+      "production_rate": 1,
+      "consumption_rate": 1
+    },
+    {
+      "id": "ch4",
+      "name": "",
+      "src": "siso_b",
+      "dst": "deinterleave",
+      "capacity": 4,
+      "initial_tokens": 0,
+      "production_rate": 1,
+      "consumption_rate": 1
+    },
+    {
+      "id": "extrinsic",
+      "name": "",
+      "src": "deinterleave",
+      "dst": "siso_a",
+      "capacity": 4,
+      "initial_tokens": 1,
+      "production_rate": 1,
+      "consumption_rate": 1
+    },
+    {
+      "id": "ch6",
+      "name": "",
+      "src": "siso_b",
+      "dst": "crc_check",
+      "capacity": 4,
+      "initial_tokens": 0,
+      "production_rate": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1
+      ],
+      "consumption_rate": 1
+    },
+    {
+      "id": "ch7",
+      "name": "",
+      "src": "crc_check",
+      "dst": "transport",
+      "capacity": 4,
+      "initial_tokens": 0,
+      "production_rate": 1,
+      "consumption_rate": 1
+    }
+  ]
+}

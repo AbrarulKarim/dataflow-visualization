@@ -1,0 +1,286 @@
+{
+  "version": 1,
+  "name": "echo-canceller",
+  "actors": [
+    {
+      "id": "far_end",
+      "name": "far_end",
+      "kind": "source",
+      "phases": 1,
+      "position": [
+        80,
+        130
+      ],
+      "power": {
+        "exec_power": 0.4,
+        "idle_power": 0.15,
+        "sleep_power": 0.02,
+        "shutdown_power": 0.5,
+        "wakeup_power": 0.8
+      },
+      "timing": {
+        "exec_time": 6,
+        "sleep_delay": 2,
+        "wakeup_delay": 3
+      },
+      "sleep_policy": {
+        "kind": "never",
+        "timeout": 0
+      },
+      "distribution": {
+        "kind": "constant",
+        "mean": 128,
+        "stddev": 0.0,
+        "low": 1.0,
+        "high": 1.0,
+        "expression": ""
+      }
+    },
+    {
+      "id": "near_mic",
+      "name": "near_mic",
+      "kind": "source",
+      "phases": 1,
+      "position": [
+        80,
+        360
+      ],
+      "power": {
+        "exec_power": 0.4,
+        "idle_power": 0.15,
+        "sleep_power": 0.02,
+        "shutdown_power": 0.5,
+        "wakeup_power": 0.8
+      },
+      "timing": {
+        "exec_time": 6,
+        "sleep_delay": 2,
+        "wakeup_delay": 3
+      },
+      "sleep_policy": {
+        "kind": "never",
+        "timeout": 0
+      },
+      "distribution": {
+        "kind": "constant",
+        "mean": 128,
+        "stddev": 0.0,
+        "low": 1.0,
+        "high": 1.0,
+        "expression": ""
+      }
+    },
+    {
+      "id": "adaptive_filter",
+      "name": "adaptive_filter",
+      "kind": "static_rate",
+      "phases": 1,
+      "position": [
+        340,
+        130
+      ],
+      "power": {
+        "exec_power": 2.4,
+        "idle_power": 0.7,
+        "sleep_power": 0.02,
+        "shutdown_power": 0.5,
+        "wakeup_power": 0.8
+      },
+      "timing": {
+        "exec_time": 55,
+        "sleep_delay": 6,
+        "wakeup_delay": 16
+      },
+      "sleep_policy": {
+        "kind": "timeout",
+        "timeout": 100
+      }
+    },
+    {
+      "id": "subtract",
+      "name": "subtract",
+      "kind": "static_rate",
+      "phases": 1,
+      "position": [
+        600,
+        245
+      ],
+      "power": {
+        "exec_power": 0.4,
+        "idle_power": 0.18,
+        "sleep_power": 0.02,
+        "shutdown_power": 0.5,
+        "wakeup_power": 0.8
+      },
+      "timing": {
+        "exec_time": 8,
+        "sleep_delay": 2,
+        "wakeup_delay": 3
+      },
+      "sleep_policy": {
+        "kind": "timeout",
+        "timeout": 100
+      }
+    },
+    {
+      "id": "lms_update",
+      "name": "lms_update",
+      "kind": "static_rate",
+      "phases": 1,
+      "position": [
+        340,
+        380
+      ],
+      "power": {
+        "exec_power": 2.1,
+        "idle_power": 0.6,
+        "sleep_power": 0.02,
+        "shutdown_power": 0.5,
+        "wakeup_power": 0.8
+      },
+      "timing": {
+        "exec_time": 48,
+        "sleep_delay": 6,
+        "wakeup_delay": 16
+      },
+      "sleep_policy": {
+        "kind": "timeout",
+        "timeout": 100
+      }
+    },
+    {
+      "id": "nlp",
+      "name": "nlp",
+      "kind": "static_rate",
+      "phases": 1,
+      "position": [
+        840,
+        245
+      ],
+      "power": {
+        "exec_power": 0.7,
+        "idle_power": 0.25,
+        "sleep_power": 0.02,
+        "shutdown_power": 0.5,
+        "wakeup_power": 0.8
+      },
+      "timing": {
+        "exec_time": 20,
+        "sleep_delay": 4,
+        "wakeup_delay": 12
+      },
+      "sleep_policy": {
+        "kind": "immediate",
+        "timeout": 0
+      }
+    },
+    {
+      "id": "uplink",
+      "name": "uplink",
+      "kind": "sink",
+      "phases": 1,
+      "position": [
+        1060,
+        245
+      ],
+      "power": {
+        "exec_power": 0.3,
+        "idle_power": 0.12,
+        "sleep_power": 0.02,
+        "shutdown_power": 0.5,
+        "wakeup_power": 0.8
+      },
+      "timing": {
+        "exec_time": 6,
+        "sleep_delay": 2,
+        "wakeup_delay": 3
+      },
+      "sleep_policy": {
+        "kind": "never",
+        "timeout": 0
+      }
+    }
+  ],
+  "channels": [
+    {
+      "id": "ch1",
+      "name": "",
+      "src": "far_end",
+      "dst": "adaptive_filter",
+      "capacity": 6,
+      "initial_tokens": 0,
+      "production_rate": 1,
+      "consumption_rate": 1
+    },
+    {
+      "id": "echo_est",
+      "name": "",
+      "src": "adaptive_filter",
+      "dst": "subtract",
+      "capacity": 6,
+      "initial_tokens": 0,
+      "production_rate": 1,
+      "consumption_rate": 1
+    },
+    {
+      "id": "far_ref",
+      "name": "",
+      "src": "adaptive_filter",
+      "dst": "lms_update",
+      "capacity": 6,
+      "initial_tokens": 0,
+      "production_rate": 1,
+      "consumption_rate": 1
+    },
+    {
+      "id": "ch4",
+      "name": "",
+      "src": "near_mic",
+      "dst": "subtract",
+      "capacity": 6,
+      "initial_tokens": 0,
+      "production_rate": 1,
+      "consumption_rate": 1
+    },
+    {
+      "id": "ch5",
+      "name": "",
+      "src": "subtract",
+      "dst": "nlp",
+      "capacity": 6,
+      "initial_tokens": 0,
+      "production_rate": 1,
+      "consumption_rate": 1
+    },
+    {
+      "id": "error",
+      "name": "",
+      "src": "subtract",
+      "dst": "lms_update",
+      "capacity": 6,
+      "initial_tokens": 0,
+      "production_rate": 1,
+      "consumption_rate": 1
+    },
+    {
+      "id": "coefficients",
+      "name": "",
+      "src": "lms_update",
+      "dst": "adaptive_filter",
+      "capacity": 4,
+      "initial_tokens": 1,
+      "production_rate": 1,
+      "consumption_rate": 1
+    },
+    {
+      "id": "ch8",
+      "name": "",
+      "src": "nlp",
+      "dst": "uplink",
+      "capacity": 6,
+      "initial_tokens": 0,
+      "production_rate": 1,
+      "consumption_rate": 1
+    }
+  ]
+}

@@ -1,0 +1,484 @@
+{
+  "version": 1,
+  "name": "slam-frontend",
+  "actors": [
+    {
+      "id": "camera",
+      "name": "camera",
+      "kind": "source",
+      "phases": 1,
+      "position": [
+        80,
+        240
+      ],
+      "power": {
+        "exec_power": 0.8,
+        "idle_power": 0.3,
+        "sleep_power": 0.02,
+        "shutdown_power": 0.5,
+        "wakeup_power": 0.8
+      },
+      "timing": {
+        "exec_time": 25,
+        "sleep_delay": 2,
+        "wakeup_delay": 3
+      },
+      "sleep_policy": {
+        "kind": "never",
+        "timeout": 0
+      },
+      "distribution": {
+        "kind": "constant",
+        "mean": 1000,
+        "stddev": 0.0,
+        "low": 1.0,
+        "high": 1.0,
+        "expression": ""
+      }
+    },
+    {
+      "id": "imu",
+      "name": "imu",
+      "kind": "source",
+      "phases": 1,
+      "position": [
+        80,
+        470
+      ],
+      "power": {
+        "exec_power": 0.2,
+        "idle_power": 0.08,
+        "sleep_power": 0.02,
+        "shutdown_power": 0.5,
+        "wakeup_power": 0.8
+      },
+      "timing": {
+        "exec_time": 4,
+        "sleep_delay": 2,
+        "wakeup_delay": 3
+      },
+      "sleep_policy": {
+        "kind": "never",
+        "timeout": 0
+      },
+      "distribution": {
+        "kind": "constant",
+        "mean": 125,
+        "stddev": 0.0,
+        "low": 1.0,
+        "high": 1.0,
+        "expression": ""
+      }
+    },
+    {
+      "id": "undistort",
+      "name": "undistort",
+      "kind": "static_rate",
+      "phases": 1,
+      "position": [
+        300,
+        240
+      ],
+      "power": {
+        "exec_power": 1.3,
+        "idle_power": 0.45,
+        "sleep_power": 0.02,
+        "shutdown_power": 0.5,
+        "wakeup_power": 0.8
+      },
+      "timing": {
+        "exec_time": 60,
+        "sleep_delay": 2,
+        "wakeup_delay": 3
+      },
+      "sleep_policy": {
+        "kind": "timeout",
+        "timeout": 200
+      }
+    },
+    {
+      "id": "detect",
+      "name": "detect",
+      "kind": "static_rate",
+      "phases": 1,
+      "position": [
+        520,
+        240
+      ],
+      "power": {
+        "exec_power": 2.9,
+        "idle_power": 0.8,
+        "sleep_power": 0.02,
+        "shutdown_power": 0.5,
+        "wakeup_power": 0.8
+      },
+      "timing": {
+        "exec_time": 180,
+        "sleep_delay": 8,
+        "wakeup_delay": 24
+      },
+      "sleep_policy": {
+        "kind": "timeout",
+        "timeout": 200
+      }
+    },
+    {
+      "id": "describe",
+      "name": "describe",
+      "kind": "static_rate",
+      "phases": 1,
+      "position": [
+        740,
+        240
+      ],
+      "power": {
+        "exec_power": 1.8,
+        "idle_power": 0.55,
+        "sleep_power": 0.02,
+        "shutdown_power": 0.5,
+        "wakeup_power": 0.8
+      },
+      "timing": {
+        "exec_time": 90,
+        "sleep_delay": 2,
+        "wakeup_delay": 3
+      },
+      "sleep_policy": {
+        "kind": "timeout",
+        "timeout": 200
+      }
+    },
+    {
+      "id": "match",
+      "name": "match",
+      "kind": "static_rate",
+      "phases": 1,
+      "position": [
+        960,
+        240
+      ],
+      "power": {
+        "exec_power": 2.2,
+        "idle_power": 0.6,
+        "sleep_power": 0.02,
+        "shutdown_power": 0.5,
+        "wakeup_power": 0.8
+      },
+      "timing": {
+        "exec_time": 110,
+        "sleep_delay": 2,
+        "wakeup_delay": 3
+      },
+      "sleep_policy": {
+        "kind": "timeout",
+        "timeout": 200
+      }
+    },
+    {
+      "id": "imu_preint",
+      "name": "imu_preint",
+      "kind": "static_rate",
+      "phases": 1,
+      "position": [
+        520,
+        470
+      ],
+      "power": {
+        "exec_power": 0.4,
+        "idle_power": 0.15,
+        "sleep_power": 0.02,
+        "shutdown_power": 0.5,
+        "wakeup_power": 0.8
+      },
+      "timing": {
+        "exec_time": 12,
+        "sleep_delay": 2,
+        "wakeup_delay": 3
+      },
+      "sleep_policy": {
+        "kind": "timeout",
+        "timeout": 300
+      }
+    },
+    {
+      "id": "pose_est",
+      "name": "pose_est",
+      "kind": "static_rate",
+      "phases": 1,
+      "position": [
+        1180,
+        350
+      ],
+      "power": {
+        "exec_power": 2.6,
+        "idle_power": 0.75,
+        "sleep_power": 0.02,
+        "shutdown_power": 0.5,
+        "wakeup_power": 0.8
+      },
+      "timing": {
+        "exec_time": 140,
+        "sleep_delay": 8,
+        "wakeup_delay": 22
+      },
+      "sleep_policy": {
+        "kind": "timeout",
+        "timeout": 250
+      }
+    },
+    {
+      "id": "local_map",
+      "name": "local_map",
+      "kind": "phased_rate",
+      "phases": 8,
+      "position": [
+        1400,
+        350
+      ],
+      "power": {
+        "exec_power": 1.1,
+        "idle_power": 0.5,
+        "sleep_power": 0.02,
+        "shutdown_power": 0.5,
+        "wakeup_power": 0.8
+      },
+      "timing": {
+        "exec_time": 70,
+        "sleep_delay": 2,
+        "wakeup_delay": 3
+      },
+      "sleep_policy": {
+        "kind": "timeout",
+        "timeout": 400
+      }
+    },
+    {
+      "id": "loop_closure",
+      "name": "loop_closure",
+      "kind": "phased_rate",
+      "phases": 8,
+      "position": [
+        1180,
+        130
+      ],
+      "power": {
+        "exec_power": 3.6,
+        "idle_power": 0.9,
+        "sleep_power": 0.02,
+        "shutdown_power": 0.5,
+        "wakeup_power": 0.8
+      },
+      "timing": {
+        "exec_time": 260,
+        "sleep_delay": 12,
+        "wakeup_delay": 60
+      },
+      "sleep_policy": {
+        "kind": "immediate",
+        "timeout": 0
+      }
+    },
+    {
+      "id": "pose_graph",
+      "name": "pose_graph",
+      "kind": "static_rate",
+      "phases": 1,
+      "position": [
+        960,
+        60
+      ],
+      "power": {
+        "exec_power": 3.1,
+        "idle_power": 0.85,
+        "sleep_power": 0.02,
+        "shutdown_power": 0.5,
+        "wakeup_power": 0.8
+      },
+      "timing": {
+        "exec_time": 320,
+        "sleep_delay": 12,
+        "wakeup_delay": 60
+      },
+      "sleep_policy": {
+        "kind": "immediate",
+        "timeout": 0
+      }
+    },
+    {
+      "id": "trajectory",
+      "name": "trajectory",
+      "kind": "sink",
+      "phases": 1,
+      "position": [
+        1620,
+        350
+      ],
+      "power": {
+        "exec_power": 0.3,
+        "idle_power": 0.12,
+        "sleep_power": 0.02,
+        "shutdown_power": 0.5,
+        "wakeup_power": 0.8
+      },
+      "timing": {
+        "exec_time": 10,
+        "sleep_delay": 2,
+        "wakeup_delay": 3
+      },
+      "sleep_policy": {
+        "kind": "never",
+        "timeout": 0
+      }
+    }
+  ],
+  "channels": [
+    {
+      "id": "ch1",
+      "name": "",
+      "src": "camera",
+      "dst": "undistort",
+      "capacity": 3,
+      "initial_tokens": 0,
+      "production_rate": 1,
+      "consumption_rate": 1
+    },
+    {
+      "id": "ch2",
+      "name": "",
+      "src": "undistort",
+      "dst": "detect",
+      "capacity": 3,
+      "initial_tokens": 0,
+      "production_rate": 1,
+      "consumption_rate": 1
+    },
+    {
+      "id": "ch3",
+      "name": "",
+      "src": "detect",
+      "dst": "describe",
+      "capacity": 3,
+      "initial_tokens": 0,
+      "production_rate": 1,
+      "consumption_rate": 1
+    },
+    {
+      "id": "descriptors",
+      "name": "",
+      "src": "describe",
+      "dst": "match",
+      "capacity": 3,
+      "initial_tokens": 0,
+      "production_rate": 1,
+      "consumption_rate": 1
+    },
+    {
+      "id": "prev_frame",
+      "name": "",
+      "src": "match",
+      "dst": "match",
+      "capacity": 2,
+      "initial_tokens": 1,
+      "production_rate": 1,
+      "consumption_rate": 1
+    },
+    {
+      "id": "ch6",
+      "name": "",
+      "src": "imu",
+      "dst": "imu_preint",
+      "capacity": 24,
+      "initial_tokens": 0,
+      "production_rate": 1,
+      "consumption_rate": 8
+    },
+    {
+      "id": "ch7",
+      "name": "",
+      "src": "imu_preint",
+      "dst": "pose_est",
+      "capacity": 3,
+      "initial_tokens": 0,
+      "production_rate": 1,
+      "consumption_rate": 1
+    },
+    {
+      "id": "ch8",
+      "name": "",
+      "src": "match",
+      "dst": "pose_est",
+      "capacity": 3,
+      "initial_tokens": 0,
+      "production_rate": 1,
+      "consumption_rate": 1
+    },
+    {
+      "id": "ch9",
+      "name": "",
+      "src": "pose_est",
+      "dst": "local_map",
+      "capacity": 3,
+      "initial_tokens": 0,
+      "production_rate": 1,
+      "consumption_rate": 1
+    },
+    {
+      "id": "ch10",
+      "name": "",
+      "src": "local_map",
+      "dst": "trajectory",
+      "capacity": 3,
+      "initial_tokens": 0,
+      "production_rate": 1,
+      "consumption_rate": 1
+    },
+    {
+      "id": "ch11",
+      "name": "",
+      "src": "local_map",
+      "dst": "loop_closure",
+      "capacity": 12,
+      "initial_tokens": 0,
+      "production_rate": 1,
+      "consumption_rate": 1
+    },
+    {
+      "id": "ch12",
+      "name": "",
+      "src": "loop_closure",
+      "dst": "pose_graph",
+      "capacity": 3,
+      "initial_tokens": 0,
+      "production_rate": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1
+      ],
+      "consumption_rate": 1
+    },
+    {
+      "id": "map_correction",
+      "name": "",
+      "src": "pose_graph",
+      "dst": "local_map",
+      "capacity": 3,
+      "initial_tokens": 1,
+      "production_rate": 1,
+      "consumption_rate": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1
+      ]
+    }
+  ]
+}

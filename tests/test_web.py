@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -33,11 +35,67 @@ def test_defaults_expose_the_python_model_defaults():
     assert payload["timing"]["exec_time"] == 1
     assert payload["power"]["idle_power"] > payload["power"]["sleep_power"]
     assert set(payload["sleep_kinds"]) == {"never", "immediate", "timeout", "adaptive"}
+    assert payload["sleep_policy"]["wma_factor"] > 0
+    assert payload["sleep_policy"]["wma_window"] >= 1
+    strategies = {s["value"]: s for s in payload["adaptive_strategies"]}
+    assert strategies["weighted_moving_average"]["label"] == "Weighted moving average"
     kinds = {k["value"]: k for k in payload["actor_kinds"]}
     assert kinds["phased_rate"]["label"] == "Phased rate"
     assert kinds["source"]["group"] == "environment"
     assert {g["id"] for g in payload["actor_groups"]} == {"static", "dynamic", "environment"}
     assert "gaussian" in payload["distributions"]
+
+
+def test_simulate_with_an_adaptive_actor():
+    b = GraphBuilder("adaptive-web-test")
+    b.source("src", interval=20, exec_time=1)
+    b.actor("a", exec_time=1, sleep="adaptive", wma_factor=60, wma_window=3,
+            sleep_delay=1, wakeup_delay=1)
+    b.sink("snk", exec_time=1)
+    b.connect("src", "a", capacity=6)
+    b.connect("a", "snk", capacity=6)
+    graph = graph_to_dict(b.build())
+
+    response = client.post("/api/simulate", json={"graph": graph, "cycles": 1000})
+    assert response.status_code == 200
+    body = response.json()
+    a = next(m for m in body["metrics"]["actors"] if m["id"] == "a")
+    assert a["state_cycles"]["sleeping"] > 0
+    assert body["metrics"]["deadlock_cycle"] is None
+
+
+def test_infinite_sleep_idle_ratio_serialises_as_a_json_safe_string():
+    """`immediate` sleep can leave an actor's idle_cycles at 0 (it decides to
+    sleep within the very cycle it goes idle), which makes sleep_idle_ratio
+    genuinely infinite -- see the model-level test for that. JSON's grammar has
+    no literal for infinity, and while Python's own (lenient) `json` module
+    would silently parse the bare token back into `float('inf')` and mask a
+    bug here, a browser's `JSON.parse` rejects it outright and would fail the
+    *entire* response, not just this one field. So the check here is on the
+    raw bytes: every appearance of "Infinity" must be quote-delimited (a JSON
+    string), never a bare token.
+    """
+    b = GraphBuilder("infinite-ratio")
+    b.source("src", interval=40, exec_time=1)
+    b.actor("a", exec_time=2, sleep="immediate", sleep_delay=2, wakeup_delay=3)
+    b.sink("snk", exec_time=1)
+    b.connect("src", "a", capacity=4)
+    b.connect("a", "snk", capacity=4)
+    graph = graph_to_dict(b.build())
+
+    response = client.post("/api/simulate", json={"graph": graph, "cycles": 2000})
+    assert response.status_code == 200
+
+    matches = list(re.finditer("Infinity", response.text))
+    assert matches, "expected the infinite ratio to appear in the response at all"
+    for match in matches:
+        start, end = match.span()
+        quoted = response.text[start - 1] == '"' and response.text[end] == '"'
+        assert quoted, "found a bare `Infinity` token -- invalid JSON, unparseable by JS"
+
+    a = next(m for m in response.json()["metrics"]["actors"] if m["id"] == "a")
+    assert a["state_cycles"]["idle"] == 0
+    assert a["sleep_idle_ratio"] == "Infinity"
 
 
 def test_examples_round_trip():
@@ -74,6 +132,9 @@ def test_simulate_returns_metrics_and_a_replayable_trace():
     # Every recorded state must be one the UI knows how to colour.
     states = {state for series in body["trace"]["actors"].values() for _, state in series}
     assert states <= {"idle", "executing", "shutdown", "sleeping", "wakeup"}
+    # The metrics-panel ratios the front end renders per actor.
+    a = next(m for m in body["metrics"]["actors"] if m["id"] == "a")
+    assert set(a) >= {"wakeups", "sleep_idle_ratio", "wakeup_firing_ratio"}
 
 
 def test_simulate_honours_the_trace_window():

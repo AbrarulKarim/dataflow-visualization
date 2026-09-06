@@ -90,7 +90,32 @@ wakeup delay. That penalty is the whole point of the sleep policies:
 | `never` | stays idle |
 | `immediate` | shuts down the cycle it becomes non-fireable |
 | `timeout(t)` | shuts down after `t` idle cycles; becoming fireable **resets** the countdown |
-| `adaptive` | reserved for history-based strategies; currently behaves as a timeout |
+| `adaptive` | shuts down after a threshold computed from the actor's own fireability history; the countdown still resets on becoming fireable, same as `timeout` |
+
+### Adaptive sleep strategies
+
+`adaptive` picks a sub-strategy (`SleepPolicy.adaptive_strategy`); more can be
+added later without touching the ones already there. The first one:
+
+**Weighted moving average** — `delay = X × execution time / (average of the
+last N fireability gaps)`, with `X` (`wma_factor`) and `N` (`wma_window`) as
+per-actor parameters. `N` only bounds how many gaps the average is taken over;
+it does not itself appear in the formula.
+A *fireability gap* is the number of cycles between two successive moments the
+actor became fireable (the trace's fireable-arrow events, [below](#power-profiles))
+— the interval work arrives on, independent of whether the actor was awake to
+act on it. Frequent arrivals shrink the average gap, which *raises* the
+threshold, so the actor waits longer before committing to a sleep/wake round
+trip it would likely have to reverse almost immediately; rare arrivals raise
+the average gap, lower the threshold, and send it to sleep sooner. Before `N`
+gaps have been observed — at the very start of a run — it falls back to the
+plain `timeout` field as a bootstrap value.
+
+Because this threshold can be fractional, the event engine cannot skip straight
+to `idle_since + timeout`: it ceils to the first integer cycle at which
+`idle_cycles >= timeout` actually holds, which is exactly what the tick engine
+would find by checking every cycle. Both engines are checked for exact
+agreement on graphs using this policy, same as everywhere else.
 
 ### Energy
 
@@ -98,6 +123,33 @@ An actor occupies exactly one state per cycle, so
 `energy = Σ power(state) × cycles_in_state`. Sources and sinks are test-bench
 infrastructure: they never sleep and their energy is reported separately from
 the global compute total.
+
+### Per-actor metrics
+
+Alongside firings, utilization and energy, the Metrics panel (and the JSON/CSV
+export) reports two ratios aimed at judging a sleep policy rather than raw
+activity:
+
+* **sleep/idle** — sleeping cycles divided by idle cycles. High means the actor
+  spends its non-executing time asleep rather than sitting idle. An `immediate`
+  policy decides to sleep within the very cycle it goes idle, so it is never
+  charged any idle time at all — `idle` is 0, and the ratio is a genuine `∞`
+  rather than an undefined fallback: sleeping isn't merely large relative to
+  idling here, there is no idling to compare it to. The 0/0 case (never idle
+  *and* never asleep, e.g. `never` or a source/sink) does fall back to 0.
+* **wakeups/firings** — wakeup transitions divided by firings. Close to 1 means
+  almost every firing was preceded by waking up from sleep, i.e. the actor
+  rarely catches two arrivals back to back without sleeping in between; well
+  below 1 means it's mostly firing back-to-back while awake. A wakeup is
+  counted the instant sleep ends, whether or not the actor visibly passes
+  through the WAKEUP state on the way (a zero-length wakeup delay skips it),
+  so it always pairs with the firing it enabled.
+
+JSON has no literal for infinity — a bare `Infinity` token is invalid syntax
+that a browser's `JSON.parse` refuses outright, unlike Python's own (lenient)
+`json` module — so an infinite `sleep/idle` is sent as the string `"Infinity"`
+over the API and in `--json` output, and rendered as `∞` rather than run
+through ordinary number formatting. The CSV export writes the same text.
 
 ## Power profiles
 
@@ -170,6 +222,42 @@ count of DOM nodes with a count of events:
 
 A 1M-cycle run of a busy network renders all five charts in about 19 MB of JS
 heap, with 290 DOM nodes in the panel.
+
+## Example networks
+
+`examples/` holds three small networks that isolate one mechanism each — `chain`
+(one stage per sleep policy), `feedback` (a credit loop that sets the throughput)
+and `phased` (a cyclo-static resampler) — plus eight drawn from real applications.
+Rates are the genuine token counts of each application; execution times and powers
+are in the framework's relative units, chosen so the balance between stages
+resembles a real implementation rather than claiming to measure one.
+
+### Pipelines
+
+| Network | What it exercises |
+|---|---|
+| `h264-decoder` | H.264 baseline decode at macroblock-row granularity: 9 rows per frame, a reference-frame loop from the deblocking filter back into motion compensation, and a variable-bitrate (gaussian) source. The loop is what stops the pipeline running ahead of itself. |
+| `ofdm-receiver` | 802.11a/g baseband receive: 80 samples per symbol (64 + cyclic prefix) down to 48 subcarriers, 4 bits per 16-QAM symbol, rate-1/2 coding, with pilot-driven channel estimation feeding back into the equaliser. Viterbi sits at ~87% occupancy — push its execution time past the 80-cycle symbol period and backpressure throttles everything behind it. |
+| `sensor-node` | A duty-cycled IoT node with exponential event arrivals: the case sleep policies exist for. The radio dominates the energy and wakes slowly (400 cycles), so whether it should sleep between events is a real trade-off. Set its policy to `never` and compare. |
+| `radar-doppler` | Pulse-Doppler front end built around a phased-rate corner turn — the textbook cyclo-static actor: one pulse of 64 range gates on each of four phases, then the assembled 4×64 block on the last, so the Doppler FFT sees range-Doppler matrices. |
+
+### Networks whose topology is the point
+
+These are less a line and more a graph: branches that rejoin, loops nested inside
+loops, and more than one source.
+
+| Network | Topology |
+|---|---|
+| `hevc-encoder` | A **fork-join inside two nested loops**. Each of 16 CTUs per frame is tried both ways at once — motion estimation against the reference frame and intra prediction from its neighbours — and the mode decision joins the branches. The **reconstruction loop** quantises, inverts everything again, filters, and parks the result in the decoded picture buffer that motion estimation searches next frame; the **rate-control loop** feeds the frame's actual bit cost back into the quantiser. Motion estimation sits at ~48% occupancy, as it does in a real encoder. |
+| `turbo-decoder` | An **iteration loop** where the loop *is* the algorithm: two SISO decoders trade extrinsic information through an interleaver, eight times per code block, before a hard decision comes out. The iteration count lives in the rates rather than in control flow — both decoders are phased-rate actors with eight phases, `siso_a` taking the block in on its first and `siso_b` emitting a decision on its last, with one token in the loop at reset. (A CRC-driven stopping rule would need the dynamic actors.) |
+| `echo-canceller` | **Two live sources** — the far-end signal and the microphone hearing it back — joining at the subtractor, closed by the **LMS adaptation loop**: the residual error and the far-end reference update the filter taps, so what the filter does next depends on how wrong it was last time. |
+| `slam-frontend` | **Two loops running eight apart**, plus two sensors at different rates. Feature matching carries one frame of delay against the previous frame's descriptors; loop-closure detection batches eight keyframes before correcting the map. The map has to *take* its correction on the same eighth-keyframe cadence the outer loop produces it on — consuming one every frame is rate-inconsistent and deadlocks on the second keyframe. |
+
+`tests/test_examples.py` runs every bundled network for 200k cycles and checks it
+validates, never deadlocks, keeps every bounded FIFO inside its capacity, agrees
+across both engines, and settles into a bounded steady state — which is what
+catches a rate typo, since an inconsistent graph either stalls or grows a buffer
+without limit.
 
 ## Engines
 
@@ -247,6 +335,13 @@ tests/     model, simulation, cross-engine and API tests
 ## Not yet implemented
 
 Dynamic models of computation (KPN, boolean dataflow, Dennis dataflow,
-data-dependent firing rules) and history-based adaptive sleep policies. The
-firing-rule interface in `dataflow/sim/core.py` (`fireable` plus the
-consume/produce snapshot taken at firing start) is the seam they plug into.
+data-dependent firing rules). The firing-rule interface in
+`dataflow/sim/core.py` (`fireable` plus the consume/produce snapshot taken at
+firing start) is the seam they plug into.
+
+The adaptive sleep policy currently has one strategy (weighted moving
+average); further history-based strategies are a matter of adding a branch to
+`SleepPolicy.effective_timeout` and an entry to `ADAPTIVE_STRATEGY_INFO` in
+`dataflow/model/actor.py` — the UI's strategy picker and the event engine's
+deadline prediction both read from that registry rather than hard-coding the
+one strategy.
