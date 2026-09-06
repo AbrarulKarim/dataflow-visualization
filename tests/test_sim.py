@@ -346,6 +346,67 @@ def test_adaptive_countdown_resets_like_a_plain_timeout(mode):
     assert a.firings > 50
 
 
+@pytest.mark.parametrize("mode", MODES)
+def test_custom_adaptive_formula_matches_hand_computation_end_to_end(mode):
+    """A formula using every documented variable at once (sleep_delay,
+    wakeup_delay, mean_gap), wired all the way through the actual simulation --
+    this is what proves `sleep_delay`/`wakeup_delay` genuinely reach the
+    formula, not just `effective_timeout`'s own unit tests. Also exercises the
+    event engine's deadline prediction against an arbitrary user formula, not
+    just the built-in one: it re-evaluates the same expression to predict the
+    threshold, so it has to reach the identical result the tick engine would
+    by checking every cycle.
+    """
+    b = GraphBuilder()
+    b.source("src", interval=40, exec_time=1)
+    b.actor("a", exec_time=2, sleep="adaptive", adaptive_strategy="custom",
+            custom_expression="sleep_delay + wakeup_delay + mean_gap / 8",
+            wma_window=4, sleep_delay=2, wakeup_delay=3)
+    b.sink("snk", exec_time=1)
+    b.connect("src", "a", capacity=4, channel_id="in")
+    b.connect("a", "snk", capacity=4)
+    trace = simulate(b.build(), 400, mode=mode).trace
+
+    # sleep_delay(2) + wakeup_delay(3) + mean_gap(40)/8 = 10, once the average
+    # has converged and it's no longer running on the bootstrap timeout.
+    gaps = _idle_to_shutdown_gaps(trace, "a")
+    assert gaps == [10] * len(gaps)
+    assert len(gaps) >= 5
+
+
+@pytest.mark.parametrize("mode", MODES)
+def test_custom_adaptive_formula_can_reference_the_gap_array_directly(mode):
+    """"Last Nth fireability gap, array accessible" -- a formula that only
+    looks at the single most recent gap, ignoring the rest of the window."""
+    b = GraphBuilder()
+    b.source("src", interval=20, exec_time=1)
+    b.actor("a", exec_time=1, sleep="adaptive", adaptive_strategy="custom",
+            custom_expression="gaps[-1] // 4", wma_window=3,
+            sleep_delay=1, wakeup_delay=1)
+    b.sink("snk", exec_time=1)
+    b.connect("src", "a", capacity=4, channel_id="in")
+    b.connect("a", "snk", capacity=4)
+    result = simulate(b.build(), 2000, mode=mode)
+    a = next(m for m in result.metrics.actors if m.id == "a")
+    assert result.metrics.deadlock_cycle is None
+    assert a.state_cycles["sleeping"] > 0  # 20 // 4 == 5: comfortably reachable
+
+
+def test_a_broken_custom_formula_is_rejected_before_simulating():
+    """Graph validation is the point at which a permanently-broken formula is
+    caught -- not a crash partway through a long run."""
+    b = GraphBuilder()
+    b.source("src", interval=10, exec_time=1)
+    b.actor("a", exec_time=1, sleep="adaptive", adaptive_strategy="custom",
+            custom_expression="this_is_not_a_real_variable")
+    b.sink("snk")
+    b.connect("src", "a", capacity=4)
+    b.connect("a", "snk", capacity=4)
+    graph = b.build(validate=False)
+    problems = graph.validate()
+    assert any("custom sleep formula" in p for p in problems)
+
+
 def test_fireable_gap_history_is_bounded_to_the_window():
     """A run long enough to accumulate thousands of gaps must not grow the
     per-actor history past N -- the point of bounding it to the window in the

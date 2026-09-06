@@ -141,6 +141,21 @@ ADAPTIVE_STRATEGY_INFO: dict[str, AdaptiveStrategyInfo] = {
         "Weighted moving average",
         "delay = X × execution time / (average of the last N fireability gaps)",
     ),
+    "custom": AdaptiveStrategyInfo(
+        "Custom formula",
+        "delay = your own expression, evaluated with exec_time, sleep_delay, "
+        "wakeup_delay, timeout, window, gaps and mean_gap in scope",
+    ),
+}
+
+#: Names made available to a `custom` sleep formula's `eval()`, beyond the
+#: per-actor variables built fresh for each call (see `SleepPolicy.
+#: _custom_namespace`). Deliberately small and explicit rather than the real
+#: builtins -- the same "allowlist, not blocklist" approach already used for
+#: `Distribution`'s custom expression below.
+_CUSTOM_SLEEP_FUNCTIONS: dict[str, object] = {
+    "len": len, "sum": sum, "max": max, "min": min, "abs": abs, "round": round,
+    "math": math,
 }
 
 
@@ -153,11 +168,15 @@ class SleepPolicy:
     is reset whenever the actor becomes fireable again. Once shutdown begins the
     decision is irrevocable -- see ``sim.core`` for the non-interruptible rule.
 
-    ``adaptive_strategy``, ``wma_factor`` and ``wma_window`` are only meaningful
-    when ``kind == "adaptive"``; the other kinds ignore them. Kept flat rather
-    than nested (matching :class:`Distribution` below) so the JSON schema and
-    the builder API stay simple -- a second strategy would add its own
-    similarly-prefixed fields rather than a variant type.
+    ``adaptive_strategy``, ``wma_factor``, ``wma_window`` and
+    ``custom_expression`` are only meaningful when ``kind == "adaptive"``; the
+    other kinds ignore them. Kept flat rather than nested (matching
+    :class:`Distribution` below) so the JSON schema and the builder API stay
+    simple -- a further strategy would add its own similarly-prefixed fields
+    rather than a variant type. ``wma_window`` (N) is the one field shared
+    across strategies: it bounds how many fireability gaps
+    ``ActorRuntime.fireable_gaps`` remembers at all, regardless of which
+    strategy reads that history.
     """
 
     kind: str = "never"
@@ -165,6 +184,7 @@ class SleepPolicy:
     adaptive_strategy: str = "weighted_moving_average"
     wma_factor: float = 50.0  # X
     wma_window: int = 5  # N -- how many gaps the average is taken over
+    custom_expression: str = ""  # used when adaptive_strategy == "custom"
 
     def __post_init__(self) -> None:
         if self.wma_window < 1:
@@ -173,17 +193,23 @@ class SleepPolicy:
             raise ValueError("adaptive factor (X) must be >= 0")
 
     def should_sleep(
-        self, idle_cycles: int, fireable_gaps: Sequence[int] = (), exec_time: int = 1,
+        self, idle_cycles: int, fireable_gaps: Sequence[int] = (),
+        exec_time: int = 1, sleep_delay: int = 0, wakeup_delay: int = 0,
     ) -> bool:
         if self.kind == "never":
             return False
         if self.kind == "immediate":
             return True
         if self.kind in ("timeout", "adaptive"):
-            return idle_cycles >= self.effective_timeout(fireable_gaps, exec_time)
+            return idle_cycles >= self.effective_timeout(
+                fireable_gaps, exec_time, sleep_delay, wakeup_delay
+            )
         raise ValueError(f"unknown sleep policy {self.kind!r}")
 
-    def effective_timeout(self, fireable_gaps: Sequence[int] = (), exec_time: int = 1) -> float:
+    def effective_timeout(
+        self, fireable_gaps: Sequence[int] = (), exec_time: int = 1,
+        sleep_delay: int = 0, wakeup_delay: int = 0,
+    ) -> float:
         """The idle-cycle threshold ``timeout`` and ``adaptive`` decide against.
 
         For ``timeout`` this is just the configured value. For ``adaptive`` it is
@@ -207,7 +233,69 @@ class SleepPolicy:
             if avg_gap <= 0:
                 return float(self.timeout)
             return (self.wma_factor * exec_time) / avg_gap
+        if self.adaptive_strategy == "custom":
+            if not fireable_gaps:
+                return float(self.timeout)
+            try:
+                return self._evaluate_custom(
+                    fireable_gaps, exec_time, sleep_delay, wakeup_delay
+                )
+            except Exception:
+                # Most often this is the gap history still filling up towards
+                # the configured window (e.g. a formula indexing gaps[-5] with
+                # only 2 gaps recorded so far) -- treat that exactly like "no
+                # history yet" rather than aborting the run. A formula that can
+                # *never* succeed (a typo, or indexing further back than the
+                # window will ever hold) is instead caught once, at graph
+                # -validation time, by `validate_custom_expression`.
+                return float(self.timeout)
         raise ValueError(f"unknown adaptive strategy {self.adaptive_strategy!r}")
+
+    def _custom_namespace(
+        self, fireable_gaps: Sequence[int], exec_time: int,
+        sleep_delay: int, wakeup_delay: int,
+    ) -> dict[str, object]:
+        gaps = tuple(fireable_gaps)
+        return {
+            **_CUSTOM_SLEEP_FUNCTIONS,
+            "exec_time": exec_time,
+            "sleep_delay": sleep_delay,
+            "wakeup_delay": wakeup_delay,
+            "timeout": self.timeout,
+            "window": self.wma_window,
+            "gaps": gaps,
+            "mean_gap": sum(gaps) / len(gaps) if gaps else 0.0,
+        }
+
+    def _evaluate_custom(
+        self, fireable_gaps: Sequence[int], exec_time: int,
+        sleep_delay: int, wakeup_delay: int,
+    ) -> float:
+        namespace = self._custom_namespace(
+            fireable_gaps, exec_time, sleep_delay, wakeup_delay
+        )
+        value = eval(self.custom_expression, {"__builtins__": {}}, namespace)  # noqa: S307
+        return float(value)
+
+    def validate_custom_expression(self) -> str | None:
+        """Try the formula once against a synthetic, full-window history, to
+        catch a permanent problem (bad syntax, an unknown name, indexing
+        further back than the window will ever hold) at graph-validation
+        time -- rather than only discovering it cycle after cycle, silently
+        falling back to the bootstrap timeout for the whole run.
+
+        Returns ``None`` for every kind/strategy but ``adaptive`` + ``custom``.
+        """
+        if self.kind != "adaptive" or self.adaptive_strategy != "custom":
+            return None
+        if not self.custom_expression.strip():
+            return "custom sleep formula is empty"
+        sample_gaps = tuple(range(1, self.wma_window + 1))
+        try:
+            self._evaluate_custom(sample_gaps, exec_time=1, sleep_delay=0, wakeup_delay=0)
+        except Exception as exc:
+            return f"custom sleep formula {self.custom_expression!r} failed: {exc}"
+        return None
 
     @property
     def sleeps(self) -> bool:

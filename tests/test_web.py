@@ -39,6 +39,8 @@ def test_defaults_expose_the_python_model_defaults():
     assert payload["sleep_policy"]["wma_window"] >= 1
     strategies = {s["value"]: s for s in payload["adaptive_strategies"]}
     assert strategies["weighted_moving_average"]["label"] == "Weighted moving average"
+    assert strategies["custom"]["label"] == "Custom formula"
+    assert payload["sleep_policy"]["custom_expression"] == ""
     kinds = {k["value"]: k for k in payload["actor_kinds"]}
     assert kinds["phased_rate"]["label"] == "Phased rate"
     assert kinds["source"]["group"] == "environment"
@@ -62,6 +64,44 @@ def test_simulate_with_an_adaptive_actor():
     a = next(m for m in body["metrics"]["actors"] if m["id"] == "a")
     assert a["state_cycles"]["sleeping"] > 0
     assert body["metrics"]["deadlock_cycle"] is None
+
+
+def test_simulate_with_a_custom_adaptive_formula():
+    b = GraphBuilder("custom-web-test")
+    b.source("src", interval=20, exec_time=1)
+    b.actor("a", exec_time=1, sleep="adaptive", adaptive_strategy="custom",
+            custom_expression="sleep_delay + wakeup_delay + gaps[-1] // 4",
+            wma_window=3, sleep_delay=1, wakeup_delay=1)
+    b.sink("snk", exec_time=1)
+    b.connect("src", "a", capacity=6)
+    b.connect("a", "snk", capacity=6)
+    graph = graph_to_dict(b.build())
+
+    response = client.post("/api/simulate", json={"graph": graph, "cycles": 2000})
+    assert response.status_code == 200
+    body = response.json()
+    a = next(m for m in body["metrics"]["actors"] if m["id"] == "a")
+    assert a["state_cycles"]["sleeping"] > 0
+    assert body["metrics"]["deadlock_cycle"] is None
+
+
+def test_broken_custom_formula_is_rejected_by_both_validate_and_simulate():
+    b = GraphBuilder("broken-custom")
+    b.source("src", interval=10, exec_time=1)
+    b.actor("a", exec_time=1, sleep="adaptive", adaptive_strategy="custom",
+            custom_expression="not_a_real_variable")
+    b.sink("snk")
+    b.connect("src", "a", capacity=4)
+    b.connect("a", "snk", capacity=4)
+    graph = graph_to_dict(b.build(validate=False))
+
+    validated = client.post("/api/validate", json={"graph": graph}).json()
+    assert validated["ok"] is False
+    assert any("custom sleep formula" in p for p in validated["problems"])
+
+    response = client.post("/api/simulate", json={"graph": graph, "cycles": 100})
+    assert response.status_code == 422
+    assert any("custom sleep formula" in p for p in response.json()["detail"]["problems"])
 
 
 def test_infinite_sleep_idle_ratio_serialises_as_a_json_safe_string():

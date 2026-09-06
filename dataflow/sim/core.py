@@ -229,7 +229,8 @@ class SimulationCore:
                 if rt.idle_since is None:
                     rt.idle_since = t
                 if rt.actor.can_sleep and rt.actor.sleep_policy.should_sleep(
-                    t - rt.idle_since, rt.fireable_gaps, rt.actor.timing.exec_time
+                    t - rt.idle_since, rt.fireable_gaps, rt.actor.timing.exec_time,
+                    rt.actor.timing.sleep_delay, rt.actor.timing.wakeup_delay,
                 ):
                     if rt.actor.timing.sleep_delay == 0:
                         self._set_state(rt, ActorState.SLEEPING, t)
@@ -320,7 +321,8 @@ class SimulationCore:
                     policy = rt.actor.sleep_policy
                     if policy.kind in ("timeout", "adaptive"):
                         threshold = policy.effective_timeout(
-                            rt.fireable_gaps, rt.actor.timing.exec_time
+                            rt.fireable_gaps, rt.actor.timing.exec_time,
+                            rt.actor.timing.sleep_delay, rt.actor.timing.wakeup_delay,
                         )
                         deadline = math.ceil(rt.idle_since + threshold)
                         if deadline > t:

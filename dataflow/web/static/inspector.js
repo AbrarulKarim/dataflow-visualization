@@ -235,11 +235,21 @@ export class Inspector {
               policy.wma_factor = Math.max(0, value);
               this.touch();
             }, { min: 0 })),
-            field('N (window)', numberInput(policy.wma_window, (value) => {
-              policy.wma_window = Math.max(1, Math.round(value));
-              this.touch();
-            }, { step: 1, min: 1 })),
           );
+        }
+
+        // N bounds how much fireability history is remembered at all, so it
+        // applies to every adaptive strategy, not just the built-in formula.
+        policyFields.push(field('N (window)', numberInput(policy.wma_window, (value) => {
+          policy.wma_window = Math.max(1, Math.round(value));
+          this.touch();
+        }, { step: 1, min: 1 })));
+
+        if (policy.adaptive_strategy === 'custom') {
+          policyFields.push(field('Formula', textInput(policy.custom_expression, (value) => {
+            policy.custom_expression = value;
+            this.touch();
+          }, 'e.g. wakeup_delay + mean_gap / 2'), { wide: true }));
         }
 
         policyFields.push(field('Bootstrap timeout', numberInput(policy.timeout, (value) => {
@@ -257,6 +267,20 @@ export class Inspector {
             + 'gaps): frequent arrivals keep the actor awake longer, rare ones send it '
             + 'to sleep sooner. Bootstrap timeout applies until N gaps have been '
             + 'observed.',
+        }));
+      }
+      if (policy.kind === 'adaptive' && policy.adaptive_strategy === 'custom') {
+        parts.push(el('p', {
+          class: 'hint',
+          text: 'A Python expression for the sleep delay, evaluated fresh each time '
+            + 'it\'s needed. In scope: exec_time, sleep_delay, wakeup_delay, timeout '
+            + '(the bootstrap value), window (N), gaps (the last up-to-N fireability '
+            + 'gaps, oldest first — gaps[-1] is the most recent) and mean_gap '
+            + '(their average). Also available: len, sum, max, min, abs, round, math. '
+            + 'Bootstrap timeout applies until there is at least one gap; if the '
+            + 'formula itself fails (e.g. it indexes further back than N once history '
+            + 'has not filled that far yet), it falls back to the bootstrap timeout '
+            + 'for that decision only.',
         }));
       }
       parts.push(el('p', {

@@ -12,6 +12,19 @@ from dataflow.sim import Simulator, TraceConfig
 
 SLEEP_KINDS = ("never", "immediate", "timeout", "adaptive")
 DISTRIBUTIONS = ("constant", "uniform", "gaussian", "exponential")
+ADAPTIVE_STRATEGIES = ("weighted_moving_average", "custom")
+#: A handful of formulas exercising different variables and safe functions --
+#: deliberately never one that can fail (see the dedicated validation tests
+#: for that), so every run here is checking cross-engine agreement on an
+#: arbitrary user formula, not fishing for a rejected graph.
+CUSTOM_FORMULAS = (
+    "exec_time * mean_gap / window",
+    "sleep_delay + wakeup_delay + gaps[-1] / 2",
+    "max(gaps) - min(gaps) + exec_time",
+    "sum(gaps) / len(gaps) / 2 + 1",
+    "gaps[-1] // 2 + timeout + 1",
+    "round(math.sqrt(mean_gap)) + sleep_delay",
+)
 
 
 def random_graph(rng: random.Random) -> object:
@@ -31,6 +44,7 @@ def random_graph(rng: random.Random) -> object:
     for i in range(depth):
         aid = f"a{i}"
         stage_ids.append(aid)
+        adaptive_strategy = rng.choice(ADAPTIVE_STRATEGIES)
         b.actor(
             aid,
             kind=rng.choice(("static_rate", "phased_rate"))
@@ -40,8 +54,12 @@ def random_graph(rng: random.Random) -> object:
             sleep=rng.choice(SLEEP_KINDS),
             timeout=rng.randint(0, 8),
             # Only used when sleep == "adaptive"; harmless to pass otherwise.
+            adaptive_strategy=adaptive_strategy,
             wma_factor=rng.uniform(1, 40),
             wma_window=rng.randint(1, 6),
+            custom_expression=(
+                rng.choice(CUSTOM_FORMULAS) if adaptive_strategy == "custom" else ""
+            ),
             sleep_delay=rng.randint(0, 4),
             wakeup_delay=rng.randint(0, 5),
             exec_power=rng.uniform(0.5, 2.0),

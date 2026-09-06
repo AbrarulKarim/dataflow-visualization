@@ -84,6 +84,10 @@ class DataflowGraph:
             elif not ins and not outs:
                 problems.append(f"actor {actor.name!r} is disconnected")
 
+            custom_problem = actor.sleep_policy.validate_custom_expression()
+            if custom_problem:
+                problems.append(f"actor {actor.name!r}: {custom_problem}")
+
             if actor.kind is ActorKind.UNIT_RATE:
                 for chan in ins + outs:
                     rate = chan.cons_rate() if chan.dst == actor.id else chan.prod_rate()

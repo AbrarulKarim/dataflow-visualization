@@ -95,7 +95,7 @@ wakeup delay. That penalty is the whole point of the sleep policies:
 ### Adaptive sleep strategies
 
 `adaptive` picks a sub-strategy (`SleepPolicy.adaptive_strategy`); more can be
-added later without touching the ones already there. The first one:
+added later without touching the ones already there.
 
 **Weighted moving average** — `delay = X × execution time / (average of the
 last N fireability gaps)`, with `X` (`wma_factor`) and `N` (`wma_window`) as
@@ -116,6 +116,37 @@ to `idle_since + timeout`: it ceils to the first integer cycle at which
 `idle_cycles >= timeout` actually holds, which is exactly what the tick engine
 would find by checking every cycle. Both engines are checked for exact
 agreement on graphs using this policy, same as everywhere else.
+
+**Custom formula** — write your own delay as a Python expression
+(`SleepPolicy.custom_expression`), evaluated fresh every time the actor needs a
+threshold. In scope:
+
+| Name | Meaning |
+|---|---|
+| `exec_time`, `sleep_delay`, `wakeup_delay` | the actor's own timing parameters |
+| `gaps` | the last up to `N` fireability gaps, oldest first — `gaps[-1]` is the most recent, `gaps[-2]` the one before, etc. |
+| `mean_gap` | the average of `gaps` |
+| `window` | `N` (`wma_window`) |
+| `timeout` | the bootstrap value (see below) |
+
+plus `len`, `sum`, `max`, `min`, `abs`, `round` and `math`, e.g.
+`math.sqrt(mean_gap)`. Nothing else is in scope — `eval()` runs with
+`{"__builtins__": {}}` and only this explicit allowlist added back, the same
+sandboxing already used for a source's own `custom` inter-arrival distribution
+(`Distribution.expression`) — so a formula cannot import modules, open files,
+or otherwise reach outside its own arithmetic.
+
+Before there is at least one gap, it falls back to the bootstrap `timeout`
+without evaluating the formula at all, same as the built-in strategy. If the
+formula itself raises once there *is* some history — most commonly an
+`IndexError` from asking for more gaps than have accumulated yet, e.g.
+`gaps[-5]` when the window has only filled to 2 — that single decision falls
+back to `timeout` too, rather than aborting the run: it is presumed transient,
+since the window may still fill further. A formula that can *never* succeed
+(a typo, an unknown name, or indexing further back than `N` will ever hold
+however long the run goes) is instead caught once, at graph-validation time —
+before the network is even eligible to simulate — by evaluating it against a
+synthetic, full-window sample.
 
 ### Energy
 
@@ -339,9 +370,10 @@ data-dependent firing rules). The firing-rule interface in
 `dataflow/sim/core.py` (`fireable` plus the consume/produce snapshot taken at
 firing start) is the seam they plug into.
 
-The adaptive sleep policy currently has one strategy (weighted moving
-average); further history-based strategies are a matter of adding a branch to
+The adaptive sleep policy has two strategies: weighted moving average, and a
+user-written `custom` formula for anything the built-in one doesn't cover. A
+further *built-in* strategy is a matter of adding a branch to
 `SleepPolicy.effective_timeout` and an entry to `ADAPTIVE_STRATEGY_INFO` in
 `dataflow/model/actor.py` — the UI's strategy picker and the event engine's
 deadline prediction both read from that registry rather than hard-coding the
-one strategy.
+strategy list.

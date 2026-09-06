@@ -139,6 +139,123 @@ def test_timeout_and_never_kinds_ignore_adaptive_fields():
     assert not SleepPolicy(kind="never", wma_factor=0).should_sleep(10**6, [1], exec_time=99)
 
 
+# --------------------------------------------------------------------------- #
+# Adaptive sleep policy: custom formula
+# --------------------------------------------------------------------------- #
+
+
+def test_custom_formula_sees_the_documented_variables():
+    """Every variable promised in the UI hint text must actually be in scope."""
+    policy = SleepPolicy(kind="adaptive", adaptive_strategy="custom", timeout=7, wma_window=5)
+    ns = policy._custom_namespace([10, 20, 30], exec_time=2, sleep_delay=3, wakeup_delay=4)  # noqa: SLF001
+    assert ns["exec_time"] == 2
+    assert ns["sleep_delay"] == 3
+    assert ns["wakeup_delay"] == 4
+    assert ns["timeout"] == 7
+    assert ns["window"] == 5
+    assert ns["gaps"] == (10, 20, 30)
+    assert ns["mean_gap"] == pytest.approx(20)
+    # Also confirm each name really is usable inside an expression, not just
+    # present in the namespace dict.
+    combined = SleepPolicy(
+        kind="adaptive", adaptive_strategy="custom", timeout=7, wma_window=5,
+        custom_expression="exec_time + sleep_delay + wakeup_delay + timeout + "
+        "window + gaps[-1] + mean_gap",
+    )
+    assert combined.effective_timeout(
+        [10, 20, 30], exec_time=2, sleep_delay=3, wakeup_delay=4,
+    ) == pytest.approx(2 + 3 + 4 + 7 + 5 + 30 + 20)
+
+
+def test_custom_formula_computes_a_literal_expression():
+    policy = SleepPolicy(kind="adaptive", adaptive_strategy="custom",
+                          custom_expression="exec_time * 2 + mean_gap")
+    assert policy.effective_timeout([4, 6], exec_time=3) == pytest.approx(3 * 2 + 5)
+
+
+def test_custom_formula_can_index_the_gap_history():
+    """"Last Nth fireability gap" -- gaps is a plain indexable sequence."""
+    policy = SleepPolicy(kind="adaptive", adaptive_strategy="custom",
+                          custom_expression="gaps[-1] + gaps[0]")
+    assert policy.effective_timeout([5, 8, 13], exec_time=1) == pytest.approx(13 + 5)
+
+
+def test_custom_formula_has_safe_functions_but_not_real_builtins():
+    safe = SleepPolicy(kind="adaptive", adaptive_strategy="custom",
+                        custom_expression="max(gaps) - min(gaps) + len(gaps) + "
+                        "round(math.sqrt(sum(gaps)))")
+    assert safe.effective_timeout([2, 4, 10], exec_time=1) == pytest.approx(
+        10 - 2 + 3 + round(16 ** 0.5)
+    )
+    unsafe = SleepPolicy(kind="adaptive", adaptive_strategy="custom",
+                          custom_expression="__import__('os').system('echo pwned')")
+    problem = unsafe.validate_custom_expression()
+    assert problem is not None
+    assert "not defined" in problem
+
+
+def test_custom_formula_bootstraps_from_the_configured_timeout():
+    policy = SleepPolicy(kind="adaptive", adaptive_strategy="custom", timeout=11,
+                         custom_expression="1 / 0")  # would explode if it ever ran
+    assert policy.effective_timeout([]) == 11
+
+
+def test_custom_formula_falls_back_to_timeout_on_a_runtime_error():
+    """Indexing past what history has *actually* accumulated so far (as opposed
+    to what the window will eventually hold) is a transient condition, not a
+    permanent bug -- it degrades to the bootstrap timeout rather than raising."""
+    policy = SleepPolicy(kind="adaptive", adaptive_strategy="custom", timeout=9,
+                         wma_window=5, custom_expression="gaps[-5]")
+    assert policy.effective_timeout([1, 2], exec_time=1) == 9  # only 2 of 5 gaps so far
+
+
+def test_validate_custom_expression_catches_permanent_problems():
+    unknown_name = SleepPolicy(kind="adaptive", adaptive_strategy="custom",
+                               custom_expression="not_a_real_variable")
+    assert unknown_name.validate_custom_expression() is not None
+
+    bad_syntax = SleepPolicy(kind="adaptive", adaptive_strategy="custom",
+                             custom_expression="mean_gap + ")
+    assert bad_syntax.validate_custom_expression() is not None
+
+    empty = SleepPolicy(kind="adaptive", adaptive_strategy="custom", custom_expression="  ")
+    assert empty.validate_custom_expression() == "custom sleep formula is empty"
+
+    # gaps[-6] can never succeed with a window of 5: even a full window only
+    # ever holds 5 elements, so this is a permanent bug, not a transient one --
+    # validation (a full-size synthetic sample) must catch it up front, unlike
+    # the transient case in test_custom_formula_falls_back_to_timeout_on_a_
+    # runtime_error above (which validates fine, since it *can* eventually work).
+    always_out_of_range = SleepPolicy(kind="adaptive", adaptive_strategy="custom",
+                                      wma_window=5, custom_expression="gaps[-6]")
+    assert always_out_of_range.validate_custom_expression() is not None
+
+    valid = SleepPolicy(kind="adaptive", adaptive_strategy="custom",
+                        wma_window=5, custom_expression="gaps[-5] + mean_gap")
+    assert valid.validate_custom_expression() is None
+
+
+def test_non_custom_policies_have_nothing_to_validate():
+    for policy in (
+        SleepPolicy(kind="never"),
+        SleepPolicy(kind="timeout", timeout=5),
+        SleepPolicy(kind="adaptive", adaptive_strategy="weighted_moving_average"),
+    ):
+        assert policy.validate_custom_expression() is None
+
+
+def test_graph_validation_surfaces_a_broken_custom_formula():
+    b = GraphBuilder()
+    b.source("src", interval=10, exec_time=1)
+    b.actor("a", exec_time=1, sleep="adaptive", adaptive_strategy="custom",
+            custom_expression="this_name_does_not_exist")
+    b.sink("snk")
+    b.connect("src", "a", capacity=4)
+    b.connect("a", "snk", capacity=4)
+    with pytest.raises(ValidationError, match="custom sleep formula"):
+        b.build()
+
+
 def test_json_round_trip(tmp_path):
     b = GraphBuilder("demo")
     b.source("src", interval=7, distribution="gaussian", stddev=1.5,
@@ -146,10 +263,13 @@ def test_json_round_trip(tmp_path):
     b.actor("a", kind="phased_rate", phases=2, exec_time=3,
             sleep="timeout", timeout=9, sleep_power=0.05, wakeup_delay=4)
     b.actor("adaptive_actor", sleep="adaptive", wma_factor=42.5, wma_window=6)
+    b.actor("custom_actor", sleep="adaptive", adaptive_strategy="custom",
+            custom_expression="wakeup_delay + mean_gap / 2", wma_window=3)
     b.sink("snk")
     b.connect("src", "a", capacity=8, initial_tokens=2)
     b.connect("a", "adaptive_actor", produce=[1, 2], consume=1, capacity=8)
-    b.connect("adaptive_actor", "snk", capacity=8)
+    b.connect("adaptive_actor", "custom_actor", capacity=8)
+    b.connect("custom_actor", "snk", capacity=8)
     graph = b.build()
 
     path = tmp_path / "demo.dfg.json"
@@ -168,6 +288,10 @@ def test_json_round_trip(tmp_path):
     assert adaptive.wma_factor == pytest.approx(42.5)
     assert adaptive.wma_window == 6
     assert adaptive.adaptive_strategy == "weighted_moving_average"
+
+    custom = reloaded.actors["custom_actor"].sleep_policy
+    assert custom.adaptive_strategy == "custom"
+    assert custom.custom_expression == "wakeup_delay + mean_gap / 2"
 
 
 def test_pre_rename_actor_kinds_still_load():
